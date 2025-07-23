@@ -1,0 +1,100 @@
+@host=127.0.0.1:7699/api/v1
+
+### 创建根任务
+
+POST http://{{host}}/tasks
+content-type: application/json;
+
+{
+  "name": "{{$uuid}}",
+  "expect_execute_time": "2025-07-20T12:00:00Z",
+  "background": "This is test task.",
+  "objective": "Current task expect execution finish.",
+  "details": "Task from user 001.",
+  "dependencies": [],
+  "metadata": {
+    "owner": "User-001",
+    "owner_timezone": "Asia/Shanghai",
+    "keywords": [
+      "Test",
+      "Task",
+      "User-001"
+    ],
+    "original_user_input": "Please create test task.",
+    "planning": "1.check task execute time. 2. change task state to finish.",
+    "description": "Test task",
+    "accept_criteria": "state is finish."
+  }
+}
+
+### 创建子任务
+
+POST http://{{host}}/tasks
+content-type: application/json;
+
+{
+  "name": "{{$uuid}}",
+  "expect_execute_time": "2025-07-20T20:00:00+08:00",
+  "background": "This is test task.",
+  "objective": "Current task expect execution finish.",
+  "details": "Task from user 001.",
+  "dependencies": [],
+  "parent_id": 3
+}
+
+### 获取任务
+
+GET http://{{host}}/tasks
+
+### 获取单个任务
+GET http://{{host}}/tasks/2
+
+
+### 删除单个任务
+DELETE http://{{host}}/tasks/3
+
+### 更新任务(带 metadata 数据)
+
+PUT http://{{host}}/tasks/1
+content-type: application/json
+
+{
+  "name": "测试任务更新",
+  "state": "activating",
+  "priority": 0,
+  "expectExecuteTime": "2025-07-21T10:24:25.802Z",
+  "lastedExecuteTime": "2025-07-21T10:24:25.802Z",
+  "background": "无",
+  "objective": "无",
+  "details": "无",
+  "metadata": {
+    "owner": "换人",
+    "owner_timezone": "UTC",
+    "keywords": [
+      "无"
+    ],
+    "original_user_input": "无",
+    "planning": "无",
+    "description": "无",
+    "accept_criteria": "无"
+  }
+}
+
+
+### 更新任务(不带 metadata 数据)
+PUT http://{{host}}/tasks/1
+content-type: application/json;
+
+{
+  "name": "string",
+  "state": "initial",
+  "priority": 0,
+  "expectExecuteTime": "2025-07-21T10:24:25.802Z",
+  "lastedExecuteTime": "2025-07-21T10:24:25.802Z",
+  "background": "string",
+  "objective": "string",
+  "details": "string",
+  "dependencies": [
+    0
+  ]
+}
