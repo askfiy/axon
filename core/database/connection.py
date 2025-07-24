@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from core.config import env
+from core.config import env_helper
 
 
 engine = create_async_engine(
-    env.ASYNC_DB_URL,
+    env_helper.ASYNC_DB_URL,
     # echo=True,
 )
 
@@ -21,8 +21,7 @@ async def get_async_session():
         yield session
 
 
-# 导出你想要在其他模块中直接使用的内容
 __all__ = [
-    "get_async_session",
     "engine",
+    "get_async_session"
 ]

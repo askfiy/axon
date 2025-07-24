@@ -5,11 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import MySQLDsn, field_validator
 
 
-configure = os.path.join(".", ".env", ".local.env")
+configure_path = os.path.join(".", ".env", ".local.env")
 
 
-class EnvHelper(BaseSettings):
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=configure)
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=configure_path)
 
     SYNC_DB_URL: str
     ASYNC_DB_URL: str
@@ -27,6 +27,3 @@ class EnvHelper(BaseSettings):
             raise ValueError(f"Invalid MySQL DSN: {e}") from e
 
         return str(v)
-
-
-env = EnvHelper()  # pyright: ignore[reportCallIssue]

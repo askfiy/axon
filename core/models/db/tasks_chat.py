@@ -1,11 +1,13 @@
+import typing
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.func.enums import enum_values
 from core.models.enums import MessageRole
-from core.models.db.tasks import Tasks
 from core.models.db.base import BaseTableModel
+from core.utils.enums import enum_values
 
+if typing.TYPE_CHECKING:
+    from core.models.db.tasks import Tasks
 
 class TasksChat(BaseTableModel):
     __tablename__ = "tasks_chat"

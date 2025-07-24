@@ -1,7 +1,6 @@
 from enum import StrEnum
 
 
-
 class TaskState(StrEnum):
     # 任务建立状态
     INITIAL = "initial"

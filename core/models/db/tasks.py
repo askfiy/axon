@@ -2,17 +2,15 @@ import uuid
 import datetime
 from typing import Optional, TYPE_CHECKING
 
-
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from core.func.enums import enum_values
+
+from core.utils.enums import enum_values
 from core.models.enums import TaskState
 from core.models.db.base import BaseTableModel
-
-if TYPE_CHECKING:
-    from core.models.db.tasks_chat import TasksChat
-    from core.models.db.tasks_history import TasksHistory
-    from core.models.db.tasks_metadata import TasksMetadata
+from core.models.db.tasks_chat import TasksChat
+from core.models.db.tasks_history import TasksHistory
+from core.models.db.tasks_metadata import TasksMetadata
 
 
 class Tasks(BaseTableModel):
@@ -108,11 +106,13 @@ class Tasks(BaseTableModel):
     chats: Mapped[list["TasksChat"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        order_by=TasksChat.created_at.desc(),
     )
 
     histories: Mapped[list["TasksHistory"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        order_by=TasksHistory.created_at.desc(),
     )
 
     parent: Mapped[Optional["Tasks"]] = relationship(

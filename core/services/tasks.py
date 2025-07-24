@@ -2,20 +2,26 @@ import fastapi
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.models.http.tasks import (
+from core.models.db import Tasks
+from core.models.http import (
     TaskInCRUDResponse,
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
+    TaskChatCreateRequestModel,
 )
-from core.models.db.tasks import Tasks
-from core.func.decorators import transactional
-from core.crud.tasks import TasksCRUDRepository
-from core.crud.tasks_metadata import TasksMetadataRepository
+
+from core.repository.crud import (
+    TasksCRUDRepository,
+    TasksChatRepository,
+    TasksMetadataRepository,
+)
+
+from core.utils.decorators import transactional
 
 
 async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(session=session)
-    task = await tasks_repo.get(pk=task_id)
+    task = await tasks_repo.get(pk=task_id, joined_loads=[Tasks.chats])
 
     if not task:
         raise HTTPException(
@@ -27,7 +33,7 @@ async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDRespo
 
 async def get_tasks(session: AsyncSession) -> list[TaskInCRUDResponse]:
     tasks_repo = TasksCRUDRepository(session=session)
-    tasks = await tasks_repo.get_all()
+    tasks = await tasks_repo.get_all(joined_loads=[Tasks.chats])
 
     return [TaskInCRUDResponse.model_validate(task) for task in tasks]
 
@@ -35,7 +41,7 @@ async def get_tasks(session: AsyncSession) -> list[TaskInCRUDResponse]:
 @transactional
 async def delete_task_by_id(session: AsyncSession, task_id: int) -> bool:
     tasks_repo = TasksCRUDRepository(session=session)
-    # 我们会涉及到是否删除 metadata_info, 这里把他 JOIN LOAD 出来
+    # 我们会在 repo 层涉及到是否删除 metadata_info, 所以先将其 JOIN LOAD 出来
     task = await tasks_repo.get(pk=task_id, joined_loads=[Tasks.metadata_info])
 
     if not task:
@@ -127,4 +133,29 @@ async def update_task(
     task = await tasks_repo.update(
         task, update_info=request_model.model_dump(exclude={"metadata"})
     )
+    return TaskInCRUDResponse.model_validate(task)
+
+
+@transactional
+async def insert_task_chat(
+    session: AsyncSession, task_id: int, request_model: TaskChatCreateRequestModel
+) -> TaskInCRUDResponse:
+    tasks_repo = TasksCRUDRepository(
+        session=session,
+    )
+    task_exists = await tasks_repo.exists(pk=task_id)
+
+    if not task_exists:
+        raise HTTPException(
+            status_code=fastapi.status.HTTP_404_NOT_FOUND,
+            detail=f"任务: {task_id} 不存在",
+        )
+
+    tasks_chat_repo = TasksChatRepository(session=session)
+
+    await tasks_chat_repo.create(
+        create_info={"task_id": task_id, **request_model.model_dump()}
+    )
+
+    task = await tasks_repo.get(pk=task_id, joined_loads=[Tasks.chats])
     return TaskInCRUDResponse.model_validate(task)

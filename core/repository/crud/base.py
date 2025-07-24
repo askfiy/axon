@@ -6,14 +6,15 @@ import sqlalchemy as sa
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.attributes import QueryableAttribute
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.models.db.base import BaseTableModel
+
+from core.models.db import BaseTableModel
 
 ModelType = TypeVar("ModelType", bound=BaseTableModel)
 
 
 class BaseCRUDRepository(Generic[ModelType]):
     """
-    基本的 CRUDRespository. 将自动提供 get/get_all/create/delete 等方法.
+    基本的 Crud Repository. 将自动提供 get/get_all/create/delete 等方法.
     """
 
     def __init__(self, session: AsyncSession):
@@ -21,6 +22,19 @@ class BaseCRUDRepository(Generic[ModelType]):
         self.model: type[ModelType] = typing.get_args(self.__class__.__orig_bases__[0])[
             0
         ]
+
+    async def exists(self, pk: int) -> bool:
+        exists_stmt = (
+            sa.select(self.model.id)
+            .where(self.model.id == pk, sa.not_(self.model.is_deleted))
+            .exists()
+        )
+
+        stmt = sa.select(sa.literal(True)).where(exists_stmt)
+
+        result = await self.session.execute(stmt)
+
+        return result.scalar_one_or_none() is not None
 
     async def get(
         self, pk: int, joined_loads: list[QueryableAttribute[Any]] | None = None
@@ -38,11 +52,18 @@ class BaseCRUDRepository(Generic[ModelType]):
 
         return result.unique().scalar_one_or_none()
 
-    async def get_all(self) -> Sequence[ModelType]:
+    async def get_all(
+        self, joined_loads: list[QueryableAttribute[Any]] | None = None
+    ) -> Sequence[ModelType]:
         """获取所有未被软删除的对象"""
         stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
+
+        if joined_loads:
+            for join_field in joined_loads:
+                stmt = stmt.options(joinedload(join_field))
+
         result = await self.session.execute(stmt)
-        return result.scalars().all()
+        return result.scalars().unique().all()
 
     async def create(self, create_info: dict[str, Any]) -> ModelType:
         """创建一个新对象"""

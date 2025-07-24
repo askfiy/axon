@@ -3,7 +3,7 @@
 ### 创建根任务
 
 POST http://{{host}}/tasks
-content-type: application/json;
+content-type: application/json
 
 {
   "name": "{{$uuid}}",
@@ -30,7 +30,7 @@ content-type: application/json;
 ### 创建子任务
 
 POST http://{{host}}/tasks
-content-type: application/json;
+content-type: application/json
 
 {
   "name": "{{$uuid}}",
@@ -47,7 +47,7 @@ content-type: application/json;
 GET http://{{host}}/tasks
 
 ### 获取单个任务
-GET http://{{host}}/tasks/2
+GET http://{{host}}/tasks/9
 
 
 ### 删除单个任务
@@ -83,7 +83,7 @@ content-type: application/json
 
 ### 更新任务(不带 metadata 数据)
 PUT http://{{host}}/tasks/1
-content-type: application/json;
+content-type: application/json
 
 {
   "name": "string",
@@ -98,3 +98,26 @@ content-type: application/json;
     0
   ]
 }
+
+### 为任务插入聊天记录
+POST http://{{host}}/tasks/9/control/chat
+content-type: application/json
+
+{
+  "message": "Please tail me message:\n1.Your name\n2.Your gender",
+  "role": "assistant"
+}
+
+
+### 为任务插入聊天记录
+POST http://{{host}}/tasks/9/control/chat
+content-type: application/json
+
+{
+  "message": "12",
+  "role": "user"
+}
+
+
+### 获取单个任务
+GET http://{{host}}/tasks/9
