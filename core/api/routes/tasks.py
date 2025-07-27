@@ -6,10 +6,13 @@ from fastapi import Depends
 from core.services import tasks as tasks_services
 from core.models.http import (
     ResponseModel,
+    PageinationRequest,
+    PageinationResponse,
     TaskInCRUDResponse,
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
     TaskChatCreateRequestModel,
+    TaskHistoryCreateRequestModel,
 )
 from core.api.dependencies import get_async_session, AsyncSession
 
@@ -36,13 +39,14 @@ async def create(
     path="",
     name="获取全部任务",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=ResponseModel[list[TaskInCRUDResponse]],
+    response_model=PageinationResponse[TaskInCRUDResponse],
 )
 async def get(
     session: Annotated[AsyncSession, Depends(get_async_session)],
-) -> ResponseModel[list[TaskInCRUDResponse]]:
-    result = await tasks_services.get_tasks(session=session)
-    return ResponseModel(result=result)
+    pageination: PageinationRequest = Depends(PageinationRequest),
+) -> PageinationResponse[TaskInCRUDResponse]:
+    result = await tasks_services.get_tasks(session=session, pageination=pageination)
+    return result
 
 
 @tasks_route.get(
@@ -104,8 +108,8 @@ async def delete(
 
 
 @tasks_route.post(
-    path="/{task_id}/control/chat",
-    name="插入聊天历史记录",
+    path="/{task_id}/chat",
+    name="插入聊天记录",
     status_code=fastapi.status.HTTP_200_OK,
     response_model=ResponseModel[TaskInCRUDResponse],
 )
@@ -115,6 +119,23 @@ async def insert_task_chat(
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
     result = await tasks_services.insert_task_chat(
+        session=session, task_id=task_id, request_model=request_model
+    )
+    return ResponseModel(result=result)
+
+
+@tasks_route.post(
+    path="/{task_id}/history",
+    name="插入任务记录",
+    status_code=fastapi.status.HTTP_200_OK,
+    response_model=ResponseModel[TaskInCRUDResponse],
+)
+async def insert_task_history(
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    request_model: TaskHistoryCreateRequestModel,
+    task_id: int = fastapi.Path(description="任务 ID"),
+) -> ResponseModel[TaskInCRUDResponse]:
+    result = await tasks_services.insert_task_history(
         session=session, task_id=task_id, request_model=request_model
     )
     return ResponseModel(result=result)

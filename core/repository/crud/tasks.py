@@ -2,13 +2,14 @@ from typing import override, Any
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.orm import aliased, subqueryload, with_loader_criteria
+from sqlalchemy.orm import aliased, subqueryload, with_loader_criteria, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import QueryableAttribute
-from sqlalchemy.orm.strategy_options import _AbstractLoad
+from sqlalchemy.orm.attributes import InstrumentedAttribute
+from sqlalchemy.orm.strategy_options import _AbstractLoad  # pyright: ignore[reportPrivateUsage]
 from sqlalchemy.orm.util import LoaderCriteriaOption
 
 from core.models.db import Tasks, TasksChat, TasksHistory
+from core.models.http import PageinationRequest, PageinationResponse, TaskInCRUDResponse
 from core.repository.crud.base import BaseCRUDRepository
 from core.repository.crud.tasks_metadata import TasksMetadataRepository
 
@@ -17,6 +18,7 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     def __init__(self, session: AsyncSession):
         super().__init__(session=session)
 
+        self.default_joined_loads = [Tasks.chats, Tasks.histories]
         self.tasks_metadata_repo = TasksMetadataRepository(session=self.session)
 
     def _get_history_loader_options(
@@ -80,10 +82,17 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         ]
 
     @override
+    async def create(self, create_info: dict[str, Any]) -> Tasks:
+        task = await super().create(create_info=create_info)
+        # 创建 task 后需要手动 load 一下 chats 和 histories.
+        await self.session.refresh(task, [Tasks.chats.key, Tasks.histories.key])
+        return task
+
+    @override
     async def get(
-        self, pk: int, joined_loads: list[QueryableAttribute[Any]] | None = None
+        self, pk: int, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Tasks | None:
-        joined_loads = joined_loads or []
+        joined_loads = joined_loads or self.default_joined_loads
 
         stmt = sa.select(self.model).where(
             self.model.id == pk, sa.not_(self.model.is_deleted)
@@ -93,12 +102,22 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
             for join_field in joined_loads:
                 if Tasks.chats is join_field:
                     stmt = stmt.options(*self._get_chat_loader_options())
-                if Tasks.histories is join_field:
+                elif Tasks.histories is join_field:
                     stmt = stmt.options(*self._get_history_loader_options())
+                else:
+                    stmt = stmt.options(joinedload(join_field))
 
         result = await self.session.execute(stmt)
 
         return result.unique().scalar_one_or_none()
+
+    @override
+    async def get_all(
+        self, joined_loads: list[InstrumentedAttribute[Any]] | None = None
+    ) -> Sequence[Tasks]:
+        return await super().get_all(
+            joined_loads=joined_loads or self.default_joined_loads
+        )
 
     @override
     async def delete(self, db_obj: Tasks) -> Tasks:
@@ -115,17 +134,55 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
             sa.select(aliased_tasks.id).where(aliased_tasks.parent_id == cte.c.id)
         )
 
-        stmt = (
+        # 获得需要删除的所有的任务, 子任务和当前任务
+        related_task_ids = sa.select(cte.c.id)
+
+        # 软删除 tasks
+        await self.session.execute(
             sa.update(Tasks)
-            .where(Tasks.id.in_(sa.select(cte.c.id)), sa.not_(Tasks.is_deleted))
+            .where(Tasks.id.in_(related_task_ids), sa.not_(Tasks.is_deleted))
             .values(is_deleted=True, deleted_at=sa.func.now())
         )
 
-        # 因为有事务装饰器的存在， 故这里所有的操作均为原子操作.
+        # 软删除若有任务的 chats
+        await self.session.execute(
+            sa.update(TasksChat)
+            .where(
+                TasksChat.task_id.in_(related_task_ids),
+                sa.not_(TasksChat.is_deleted),
+            )
+            .values(is_deleted=True, deleted_at=sa.func.now())
+        )
+
+        # 软删除所有任务的 histories
+        await self.session.execute(
+            sa.update(TasksHistory)
+            .where(
+                TasksHistory.task_id.in_(related_task_ids),
+                sa.not_(TasksHistory.is_deleted),
+            )
+            .values(is_deleted=True, deleted_at=sa.func.now())
+        )
+
+        # 若为根任务. 且 metainfo 未被删除, 则软删除.
         if db_obj.parent is None and not task.metadata_info.is_deleted:
             await self.tasks_metadata_repo.delete(db_obj.metadata_info)
 
-        await self.session.execute(stmt)
+        # 因为有事务装饰器的存在， 故这里所有的操作均为原子操作.
         await self.session.refresh(task)
 
         return task
+
+    async def get_tasks_pageination_response(
+        self,
+        pageination: PageinationRequest,
+    ) -> PageinationResponse[TaskInCRUDResponse]:
+        query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
+        query_stmt = query_stmt.options(*self._get_chat_loader_options())
+        query_stmt = query_stmt.options(*self._get_history_loader_options())
+
+        return await super().get_pageination_response(
+            pagination_request=pageination,
+            query_stmt=query_stmt,
+            response_model_cls=TaskInCRUDResponse,
+        )

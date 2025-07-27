@@ -39,7 +39,7 @@ content-type: application/json
   "objective": "Current task expect execution finish.",
   "details": "Task from user 001.",
   "dependencies": [],
-  "parent_id": 3
+  "parent_id": 2
 }
 
 ### 获取任务
@@ -47,15 +47,15 @@ content-type: application/json
 GET http://{{host}}/tasks
 
 ### 获取单个任务
-GET http://{{host}}/tasks/9
+GET http://{{host}}/tasks/2
 
 
 ### 删除单个任务
-DELETE http://{{host}}/tasks/3
+DELETE http://{{host}}/tasks/2
 
 ### 更新任务(带 metadata 数据)
 
-PUT http://{{host}}/tasks/1
+PUT http://{{host}}/tasks/2
 content-type: application/json
 
 {
@@ -82,7 +82,7 @@ content-type: application/json
 
 
 ### 更新任务(不带 metadata 数据)
-PUT http://{{host}}/tasks/1
+PUT http://{{host}}/tasks/2
 content-type: application/json
 
 {
@@ -100,7 +100,7 @@ content-type: application/json
 }
 
 ### 为任务插入聊天记录
-POST http://{{host}}/tasks/9/control/chat
+POST http://{{host}}/tasks/2/chat
 content-type: application/json
 
 {
@@ -110,7 +110,7 @@ content-type: application/json
 
 
 ### 为任务插入聊天记录
-POST http://{{host}}/tasks/9/control/chat
+POST http://{{host}}/tasks/2/chat
 content-type: application/json
 
 {
@@ -118,6 +118,16 @@ content-type: application/json
   "role": "user"
 }
 
+### 为任务插入历史记录
+POST http://{{host}}/tasks/2/history
+content-type: application/json
+
+{
+   "state": "activating",
+   "process": "执行中 11...",
+   "thinking": "思考过程 ..."
+}
+
 
 ### 获取单个任务
-GET http://{{host}}/tasks/9
+GET http://{{host}}/tasks/2

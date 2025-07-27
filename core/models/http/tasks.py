@@ -6,6 +6,7 @@ from pydantic import Field, field_validator, field_serializer, computed_field
 from core.models.enums import TaskState
 from core.models.http.base import BaseHttpModel
 from core.models.http.tasks_chat import TaskChatInCRUDResponse
+from core.models.http.tasks_history import TaskHistoryInCRUDResponse
 from core.models.http.tasks_metadata import TaskMetaDataRequestModel
 
 
@@ -22,20 +23,23 @@ class TaskInCRUDResponse(BaseHttpModel):
     dependencies: list[int] | None
     parent_id: int | None
 
-    raw_chats: list[TaskChatInCRUDResponse] = Field(default_factory=list, exclude=True, alias="chats")
+    chats: list[TaskChatInCRUDResponse]
+    histories: list[TaskHistoryInCRUDResponse]
 
-    @computed_field
-    @property
-    def chats(self) -> list[TaskChatInCRUDResponse]:
-        """
-        处理聊天记录的排序和限制逻辑：
-        1. 接收已按 created_at 倒序排列的原始聊天记录 (_raw_chats)。
-        2. 取前 10 条（即最近的 10 条）。
-        3. 对这 10 条记录再按 created_at 升序排序。
-        """
-        # 2. 对这 10 条记录再按 created_at 升序排序
-        final_sorted_chats = sorted(self.raw_chats, key=lambda chat: chat.created_at)
-        return final_sorted_chats
+    # raw_chats: list[TaskChatInCRUDResponse] = Field(default_factory=list, exclude=True, alias="chats")
+    #
+    # @computed_field
+    # @property
+    # def chats(self) -> list[TaskChatInCRUDResponse]:
+    #     """
+    #     处理聊天记录的排序和限制逻辑：
+    #     1. 接收已按 created_at 倒序排列的原始聊天记录 (_raw_chats)。
+    #     2. 取前 10 条（即最近的 10 条）。
+    #     3. 对这 10 条记录再按 created_at 升序排序。
+    #     """
+    #     # 2. 对这 10 条记录再按 created_at 升序排序
+    #     final_sorted_chats = sorted(self.raw_chats, key=lambda chat: chat.created_at)
+    #     return final_sorted_chats
 
     @field_validator("expect_execute_time", mode="before")
     @classmethod

@@ -12,7 +12,7 @@ if typing.TYPE_CHECKING:
 
 
 class TasksHistory(BaseTableModel):
-    __tablename__ = "tasks_histories"
+    __tablename__ = "tasks_history"
     __table_args__ = (
         sa.Index("idx_tasks_history_task_state", "task_id", "state"),
         {"comment": "任务历史记录表"},
@@ -37,7 +37,7 @@ class TasksHistory(BaseTableModel):
         sa.Text, nullable=False, comment="任务执行过程"
     )
 
-    think: Mapped[str] = mapped_column(
+    thinking: Mapped[str] = mapped_column(
         sa.Text, nullable=False, comment="Agent 的思考过程"
     )
 

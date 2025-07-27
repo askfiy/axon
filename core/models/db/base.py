@@ -56,6 +56,19 @@ class BaseTableModel(DeclarativeBase):
 
         return result
 
+    @classmethod
+    def __table_cls__(
+        cls, table_name: str, metadata: sa.MetaData, *args: Any, **kwargs: Any
+    ):
+        # 在生成 table 时, 必须确保 ID 排在第一个
+        columns = sorted(
+            args,
+            key=lambda field: 0
+            if (isinstance(field, sa.Column) and field.name == "id")
+            else 1,
+        )
+        return sa.Table(table_name, metadata, *columns, **kwargs)
+
 
 @event.listens_for(BaseTableModel, "before_update", propagate=True)
 def set_deleted_at_on_soft_delete(
