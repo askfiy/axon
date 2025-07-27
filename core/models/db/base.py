@@ -45,16 +45,6 @@ class BaseTableModel(DeclarativeBase):
         comment="0：未删除 1：已删除",
     )
 
-    def to_dict(self) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        for column in self.__mapper__.columns:
-            value = getattr(self, column.name)
-            if isinstance(value, datetime):
-                value = value.isoformat().replace("+00:00", "Z")
-            result[column.name] = value
-
-        return result
 
     @classmethod
     def __table_cls__(

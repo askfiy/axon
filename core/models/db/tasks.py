@@ -76,6 +76,13 @@ class Tasks(BaseTableModel):
     details: Mapped[str] = mapped_column(
         sa.Text, nullable=False, comment="任务的详细信息"
     )
+    is_decomposed: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        comment="已分解任务",
+        server_default=sa.text("0"),
+    )
     dependencies: Mapped[Optional[list[int]]] = mapped_column(
         sa.JSON,
         default=sa.func.json_array(),

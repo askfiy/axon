@@ -1,10 +1,14 @@
-from typing import Callable, Any, TypeVar, cast
-from collections.abc import Awaitable
+import typing
+from typing import Callable, Any, TypeVar, ParamSpec
 from functools import wraps
+from collections.abc import Awaitable
+
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 T = TypeVar("T")
 R = TypeVar("R", bound=Awaitable[Any])
+P = ParamSpec("P")
 
 
 def transactional(
@@ -15,7 +19,9 @@ def transactional(
     """
 
     @wraps(func)
-    async def wrapper(session: AsyncSession | Any, *args: Any, **kwargs: Any) -> Any:
+    async def wrapper(
+        session: AsyncSession | Any, *args: P.args, **kwargs: P.kwargs
+    ) -> Any:
         if not isinstance(session, AsyncSession):
             raise TypeError("添加了自动事务的业务层函数. 第一个参数必须是 session.")
 
@@ -27,4 +33,4 @@ def transactional(
             await session.rollback()
             raise exc
 
-    return cast(Callable[..., R], wrapper)
+    return typing.cast(Callable[..., R], wrapper)

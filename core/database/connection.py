@@ -21,7 +21,4 @@ async def get_async_session():
         yield session
 
 
-__all__ = [
-    "engine",
-    "get_async_session"
-]
+__all__ = ["engine", "get_async_session"]

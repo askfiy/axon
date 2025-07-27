@@ -181,8 +181,8 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         query_stmt = query_stmt.options(*self._get_chat_loader_options())
         query_stmt = query_stmt.options(*self._get_history_loader_options())
 
-        return await super().get_pageination_response(
-            pagination_request=pageination,
-            query_stmt=query_stmt,
+        return await super().get_pageination_response_by_stmt(
+            pageination_request=pageination,
+            stmt=query_stmt,
             response_model_cls=TaskInCRUDResponse,
         )

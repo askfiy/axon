@@ -18,13 +18,20 @@ async def lifespan(app: fastapi.FastAPI):
 app = fastapi.FastAPI(title="Axon", lifespan=lifespan)
 
 
-@app.exception_handler(fastapi.HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+@app.exception_handler(Exception)
+async def exception_handler(request: Request, exc: Exception):
+    status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
+    message = str(exc)
+
+    if isinstance(exc, fastapi.HTTPException):
+        status_code = exc.status_code
+        message = exc.detail
+
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=status_code,
         content=ResponseModel(
-            code=exc.status_code,
-            message=exc.detail,
+            code=status_code,
+            message=message,
             is_failed=True,
             result=None,
         ).model_dump(by_alias=True),

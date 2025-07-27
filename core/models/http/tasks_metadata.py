@@ -1,10 +1,12 @@
-from pydantic import BaseModel, field_serializer
+from pydantic import field_serializer
+
+from core.models.http.base import BaseHttpModel
 
 
 # Tips: 我们的 keywords 入站规则是 list[str]. 但是 db 中是 str.
 # 若要返回给外部。 则需要保持设计的一致性将其反序列化为 list[str].
 # 目前 meta_info 不会出站. 故暂时搁置.
-class TaskMetaDataRequestModel(BaseModel):
+class TaskMetaDataRequestModel(BaseHttpModel):
     owner: str
     owner_timezone: str
     keywords: list[str]

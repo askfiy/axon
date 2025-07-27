@@ -9,6 +9,7 @@ from core.utils.enums import enum_values
 if typing.TYPE_CHECKING:
     from core.models.db.tasks import Tasks
 
+
 class TasksChat(BaseTableModel):
     __tablename__ = "tasks_chat"
     __table_args__ = (

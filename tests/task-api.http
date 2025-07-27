@@ -110,24 +110,24 @@ content-type: application/json
 
 
 ### 为任务插入聊天记录
-POST http://{{host}}/tasks/2/chat
+POST http://{{host}}/tasks/1/chat
 content-type: application/json
 
 {
-  "message": "12",
+  "message": "10",
   "role": "user"
 }
 
 ### 为任务插入历史记录
-POST http://{{host}}/tasks/2/history
+POST http://{{host}}/tasks/1/history
 content-type: application/json
 
 {
    "state": "activating",
-   "process": "执行中 11...",
+   "process": "执行中 12...",
    "thinking": "思考过程 ..."
 }
 
 
 ### 获取单个任务
-GET http://{{host}}/tasks/2
+GET http://{{host}}/tasks/1

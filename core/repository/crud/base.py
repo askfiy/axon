@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Generic, TypeVar, Type
+from typing import Any, Generic, TypeVar, Type, Literal
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -80,7 +80,6 @@ class BaseCRUDRepository(Generic[ModelType]):
         db_obj.is_deleted = True
 
         self.session.add(db_obj)
-        await self.session.refresh(db_obj)
         return db_obj
 
     async def update(self, db_obj: ModelType, update_info: dict[str, Any]) -> ModelType:
@@ -89,25 +88,58 @@ class BaseCRUDRepository(Generic[ModelType]):
             setattr(db_obj, key, value)
 
         self.session.add(db_obj)
-        self.session.refresh(db_obj)
         return db_obj
 
     async def get_pageination_response(
         self,
-        pagination_request: PageinationRequest,
-        query_stmt: sa.Select[Any],
+        pageination_request: PageinationRequest,
+        response_model_cls: Type[ModelInCRUDResponse],
+        joined_loads: list[InstrumentedAttribute[Any]] | None = None,
+    ) -> PageinationResponse[ModelInCRUDResponse]:
+        """
+        返回默认的分页对象
+        """
+        stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
+
+        if joined_loads:
+            for join_field in joined_loads:
+                stmt = stmt.options(joinedload(join_field))
+
+        return await self.get_pageination_response_by_stmt(
+            pageination_request=pageination_request,
+            stmt=stmt,
+            response_model_cls=response_model_cls,
+        )
+
+    async def get_pageination_response_by_stmt(
+        self,
+        pageination_request: PageinationRequest,
+        stmt: sa.Select[Any],
         response_model_cls: Type[ModelInCRUDResponse],
     ) -> PageinationResponse[ModelInCRUDResponse]:
-        page = pagination_request.page
-        page_size = pagination_request.size
+        """
+        执行 stmt 语句. 并将结果返回为分页对象.
+        """
+
+        # 应用排序逻辑
+        for field_name, order_direction in pageination_request.order_by_rule:
+            if not hasattr(self.model, field_name):
+                raise ValueError(
+                    f"{self.model.__name__} is not has field'{field_name}'"
+                )
+            order_func = sa.asc if order_direction == "asc" else sa.desc
+            stmt = stmt.order_by(order_func(getattr(self.model, field_name)))
+
+        page = pageination_request.page
+        page_size = pageination_request.size
 
         # 计算总记录数
-        count_stmt = sa.select(sa.func.count()).select_from(query_stmt.subquery())
+        count_stmt = sa.select(sa.func.count()).select_from(stmt.subquery())
         total_items_result = await self.session.execute(count_stmt)
         total_items = total_items_result.scalar_one()
 
         # 应用分页逻辑
-        paginated_stmt = query_stmt.offset((page - 1) * page_size).limit(page_size)
+        paginated_stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
         # 执行查询并获取 ORM 模型的列表
         orm_models = (
@@ -119,8 +151,6 @@ class BaseCRUDRepository(Generic[ModelType]):
             response_model_cls.model_validate(model) for model in orm_models
         ]
 
-        # 构造并返回 PaginationResponse
-        # 这里的 T_ResponseModel 类型参数会自动从 response_model_cls 推断出来
         return PageinationResponse(
             current_page=page,
             current_size=page_size,

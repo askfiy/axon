@@ -1,11 +1,11 @@
+import re
 import datetime
-from typing import Generic, TypeVar
-from collections.abc import Sequence
+from typing import Generic, TypeVar, Literal
 
 
 import pydantic
 from pydantic import BaseModel, Field, computed_field
-from pydantic.alias_generators import to_camel
+from pydantic.alias_generators import to_camel, to_snake
 
 
 T = TypeVar("T")
@@ -50,6 +50,33 @@ class PageinationRequest(BaseHttpModel):
     size: int = Field(
         default=10, ge=1, le=100, description="单页数量, 最小 1, 最大 100"
     )
+    order_by: str | None = Field(
+        default=None,
+        description="排序字段/方向, 默认按照 id 进行 DESC 排序.",
+        examples=["id=asc,createAt=desc", "id"],
+    )
+
+    @computed_field
+    @property
+    def order_by_rule(self) -> list[tuple[str, Literal["asc", "desc"]]]:
+        order_by = self.order_by or "id=desc"
+
+        _order_by = [item.strip() for item in order_by.split(",") if item.strip()]
+        _struct_order_by: list[tuple[str, Literal["asc", "desc"]]] = []
+
+        for item in _order_by:
+            match = re.match(r"([\w_]+)(=(asc|desc))?", item, re.IGNORECASE)
+            if match:
+                field_name = to_snake(match.group(1))
+                order_direction = match.group(3)
+                direction: Literal["asc", "desc"] = "desc"
+                if order_direction and order_direction.lower() == "asc":
+                    direction = "asc"
+                _struct_order_by.append((field_name, direction))
+            else:
+                raise pydantic.ValidationError(f"Invalid order_by format: {item}")
+
+        return _struct_order_by
 
 
 class PageinationResponse(BaseHttpResponseModel[T]):
