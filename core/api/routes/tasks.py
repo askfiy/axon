@@ -13,6 +13,7 @@ from core.models.http import (
     TaskUpdateRequestModel,
 )
 from core.api.dependencies import get_async_session, AsyncSession
+from core.utils.decorators import profiled
 
 tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -39,6 +40,7 @@ async def create(
     status_code=fastapi.status.HTTP_200_OK,
     response_model=PageinationResponse[TaskInCRUDResponse],
 )
+@profiled
 async def get(
     session: Annotated[AsyncSession, Depends(get_async_session)],
     pageination: PageinationRequest = Depends(PageinationRequest),

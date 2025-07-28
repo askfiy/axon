@@ -19,4 +19,5 @@ dependencies = [
     "ruff>=0.12.4",
     "sqlalchemy>=2.0.41",
     "greenlet>=3.2.3",
+    "pyinstrument>=5.0.3",
 ]

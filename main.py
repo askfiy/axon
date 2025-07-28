@@ -4,7 +4,6 @@ import uvicorn
 import fastapi
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException
 
 from core.api.routes import api_router
 from core.models.http import ResponseModel

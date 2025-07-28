@@ -1,8 +1,8 @@
-"""Create initial tables
+"""init tables
 
-Revision ID: fc919ce8b3c3
+Revision ID: 1fd4ee40a51e
 Revises: 
-Create Date: 2025-07-27 17:26:03.209427
+Create Date: 2025-07-28 16:25:20.946389
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'fc919ce8b3c3'
+revision: str = '1fd4ee40a51e'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -50,10 +50,11 @@ def upgrade() -> None:
     sa.Column('priority', sa.Integer(), server_default=sa.text('0'), nullable=False, comment='任务优先级'),
     sa.Column('expect_execute_time', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='任务预期执行时间'),
     sa.Column('lasted_execute_time', sa.DateTime(timezone=True), nullable=True, comment='任务最终执行时间'),
-    sa.Column('state', sa.Enum('initial', 'scheduled', 'pending', 'waiting', 'activating', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), server_default='initial', nullable=False, comment='任务当前状态'),
+    sa.Column('state', sa.Enum('initial', 'scheduled', 'enqueued', 'activating', 'pending', 'waiting', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), server_default='initial', nullable=False, comment='任务当前状态'),
     sa.Column('background', sa.Text(), nullable=False, comment='任务背景'),
     sa.Column('objective', sa.Text(), nullable=False, comment='任务目标'),
     sa.Column('details', sa.Text(), nullable=False, comment='任务的详细信息'),
+    sa.Column('is_decomposed', sa.Boolean(), server_default=sa.text('0'), nullable=False, comment='已分解任务'),
     sa.Column('dependencies', sa.JSON(), server_default=sa.text('JSON_ARRAY()'), nullable=True, comment='同级任务依赖关系'),
     sa.Column('parent_id', sa.BigInteger(), nullable=True, comment='任务的父任务ID'),
     sa.Column('metadata_id', sa.BigInteger(), nullable=False, comment='任务的元信息ID'),
@@ -79,6 +80,30 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tasks_priority'), 'tasks', ['priority'], unique=False)
     op.create_index(op.f('ix_tasks_state'), 'tasks', ['state'], unique=False)
     op.create_index(op.f('ix_tasks_updated_at'), 'tasks', ['updated_at'], unique=False)
+    op.create_table('tasks_audit',
+    sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
+    sa.Column('task_id', sa.BigInteger(), nullable=False, comment='关联任务ID'),
+    sa.Column('from_state', sa.Enum('initial', 'scheduled', 'enqueued', 'activating', 'pending', 'waiting', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), nullable=False, comment='任务执行状态'),
+    sa.Column('to_state', sa.Enum('initial', 'scheduled', 'enqueued', 'activating', 'pending', 'waiting', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), nullable=False, comment='任务执行状态'),
+    sa.Column('source', sa.Enum('user', 'admin', 'agent', 'worker', 'scheduler', 'monitor', name='taskauditsource'), nullable=False, comment='触发变更的来源'),
+    sa.Column('source_context', sa.Text(), nullable=False, comment='变更来源的上下文信息, 如 user_id, worker_id 等等 ..'),
+    sa.Column('comment', sa.Text(), nullable=False, comment='变更上下文的注释, 为什么要变更. 变更背景是什么 ..'),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='创建时间'),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True, comment='更新时间'),
+    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='删除时间'),
+    sa.Column('is_deleted', sa.Boolean(), server_default=sa.text('0'), nullable=False, comment='0：未删除 1：已删除'),
+    sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    comment='任务状态审计表'
+    )
+    op.create_index('idx_tasks_audit_task_id_created_at', 'tasks_audit', ['task_id', 'created_at'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_created_at'), 'tasks_audit', ['created_at'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_from_state'), 'tasks_audit', ['from_state'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_is_deleted'), 'tasks_audit', ['is_deleted'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_source'), 'tasks_audit', ['source'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_task_id'), 'tasks_audit', ['task_id'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_to_state'), 'tasks_audit', ['to_state'], unique=False)
+    op.create_index(op.f('ix_tasks_audit_updated_at'), 'tasks_audit', ['updated_at'], unique=False)
     op.create_table('tasks_chat',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('task_id', sa.BigInteger(), nullable=False, comment='关联任务ID'),
@@ -101,7 +126,7 @@ def upgrade() -> None:
     op.create_table('tasks_history',
     sa.Column('id', sa.BigInteger(), autoincrement=True, nullable=False),
     sa.Column('task_id', sa.BigInteger(), nullable=False, comment='关联任务ID'),
-    sa.Column('state', sa.Enum('initial', 'scheduled', 'pending', 'waiting', 'activating', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), nullable=False, comment='任务执行状态'),
+    sa.Column('state', sa.Enum('initial', 'scheduled', 'enqueued', 'activating', 'pending', 'waiting', 'retrying', 'cancel', 'finish', 'failed', name='taskstate'), nullable=False, comment='任务执行状态'),
     sa.Column('process', sa.Text(), nullable=False, comment='任务执行过程'),
     sa.Column('thinking', sa.Text(), nullable=False, comment='Agent 的思考过程'),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='创建时间'),
@@ -138,6 +163,15 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tasks_chat_created_at'), table_name='tasks_chat')
     op.drop_index('idx_tasks_chat_task_role', table_name='tasks_chat')
     op.drop_table('tasks_chat')
+    op.drop_index(op.f('ix_tasks_audit_updated_at'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_to_state'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_task_id'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_source'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_is_deleted'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_from_state'), table_name='tasks_audit')
+    op.drop_index(op.f('ix_tasks_audit_created_at'), table_name='tasks_audit')
+    op.drop_index('idx_tasks_audit_task_id_created_at', table_name='tasks_audit')
+    op.drop_table('tasks_audit')
     op.drop_index(op.f('ix_tasks_updated_at'), table_name='tasks')
     op.drop_index(op.f('ix_tasks_state'), table_name='tasks')
     op.drop_index(op.f('ix_tasks_priority'), table_name='tasks')

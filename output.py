@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 # 配置忽略的目录和文件
@@ -13,7 +12,7 @@ IGNORE_DIRS = {
     "tests",
     ".env",
     "versions",
-    "alembic"
+    "alembic",
 }
 IGNORE_FILES = {
     "uv.lock",
@@ -21,7 +20,7 @@ IGNORE_FILES = {
     "output.py",
     ".gitignore",
     ".python-version",
-    "alembic.ini"
+    "alembic.ini",
 }
 
 # 输出文件名

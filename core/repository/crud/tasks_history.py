@@ -16,7 +16,7 @@ class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
         pageination: PageinationRequest,
     ) -> PageinationResponse[TaskHistoryInCRUDResponse]:
         query_stmt = sa.select(self.model).where(
-            TasksHistory.task_id == task_id, sa.not_(self.model.is_deleted)
+            self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
 
         return await super().get_pageination_response_by_stmt(
