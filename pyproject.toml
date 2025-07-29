@@ -20,4 +20,6 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "greenlet>=3.2.3",
     "pyinstrument>=5.0.3",
+    "redis[hiredis]>=6.2.0",
+    "asyncio-atexit>=1.0.1",
 ]
