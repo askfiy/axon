@@ -5,19 +5,15 @@ from pyinstrument import Profiler
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fastapi import Request
-
-# 1. 定义用于保持函数签名的 ParamSpec 和 TypeVar
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-# 2. 修正 transactional 装饰器
 def transactional(
     func: Callable[P, Awaitable[R]],
 ) -> Callable[P, Awaitable[R]]:
     """
-    安全的自动提交回滚事务 (最终修正版)。
+    安全的自动提交回滚事务。
     """
 
     @functools.wraps(func)
@@ -45,12 +41,11 @@ def transactional(
     return wrapper
 
 
-# 3. 修正 profiled 装饰器
 def profiled(
     func: Callable[P, Awaitable[R]],
 ) -> Callable[P, Awaitable[R]]:
     """
-    打印性能报告到控制台 (最终修正版)。
+    打印性能报告到控制台。
     """
 
     @functools.wraps(func)
