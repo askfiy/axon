@@ -10,8 +10,13 @@ from core.models.http import (
     TaskAuditInCRUDResponse,
     TaskAuditCreateRequestModel,
 )
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session,
+    get_async_tx_session,
+)
 from core.services import tasks_audit as tasks_audit_services
-from core.api.dependencies import get_async_session, AsyncSession
 
 
 tasks_audit_route = fastapi.APIRouter(prefix="/{task_id}/audit", tags=["Tasks-audit"])
@@ -41,7 +46,7 @@ async def get(
     response_model=ResponseModel[TaskAuditInCRUDResponse],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskAuditCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskAuditInCRUDResponse]:

@@ -1,3 +1,3 @@
-from core.middeleware.context import g
+from core.middleware.context import g
 
 __all__ = ["g"]

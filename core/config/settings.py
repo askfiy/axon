@@ -36,7 +36,7 @@ class Settings(BaseSettings):
             raise TypeError("Redis URL must be a string")
         try:
             # 验证是否符合 RedisDsn 类型.
-            MySQLDsn(redis_url)
+            RedisDsn(redis_url)
         except Exception as e:
             raise ValueError(f"Invalid redis_url DSN: {e}") from e
 

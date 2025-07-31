@@ -1,66 +1,45 @@
-
-## `/home/askfiy/Code/axon/README.md`
-
-```markdown
-# Axon
-
-## 介绍
-
-Agent-Task 程序.
-
-## 数据库
-
-提交变更:
-
-```sh
-$ alembic revision --autogenerate -m "..."
-```
-
-应用变更:
-
-```sh
-$ alembic upgrade head
-```
-
-回滚版本:
-
-```sh
-# 查看所有历史版本
-$ alembic history
-
-# 回滚到上一个版本
-$ alembic downgrade -1
-
-# 回滚到某个指定的版本号
-$ alembic downgrade e3441e9d0285
-```
-
-```
-
-## `/home/askfiy/Code/axon/all_code.md`
-
-```markdown
-
-```
-
-## `/home/askfiy/Code/axon/core/api/dependencies.py`
+## `/Users/askfiy/project/coding/axon/core/api/dependencies.py`
 
 ```python
-from sqlalchemy.ext.asyncio import AsyncSession
-from core.database.connection import get_async_session
+from contextlib import asynccontextmanager
+from fastapi import Header
+
+from core.database.connection import (
+    get_async_session,
+    get_async_tx_session,
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
-__all__ = ["get_async_session", "AsyncSession"]
+async def global_headers(
+    x_trace_id: str | None = Header(
+        default=None,
+        alias="X-Trace-Id",
+        description="用于分布式追踪的唯一 ID. 若未提供. 则 Axon 将自动生成一个 uuid.",
+    ),
+):
+    pass
+
+
+__all__ = [
+    "get_async_session",
+    "get_async_tx_session",
+    "AsyncSession",
+    "AsyncTxSession",
+    "global_headers",
+]
 
 ```
 
-## `/home/askfiy/Code/axon/core/api/routes/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/api/routes/__init__.py`
 
 ```python
 import fastapi
 
 from .tasks import tasks_route
 from .tasks_chat import tasks_chat_route
+from .tasks_audit import tasks_audit_route
 from .tasks_history import tasks_history_route
 
 
@@ -68,13 +47,14 @@ api_router = fastapi.APIRouter()
 
 tasks_route.include_router(tasks_chat_route)
 tasks_route.include_router(tasks_history_route)
+tasks_route.include_router(tasks_audit_route)
 
 
 api_router.include_router(tasks_route)
 
 ```
 
-## `/home/askfiy/Code/axon/core/api/routes/tasks.py`
+## `/Users/askfiy/project/coding/axon/core/api/routes/tasks.py`
 
 ```python
 from typing import Annotated
@@ -91,7 +71,12 @@ from core.models.http import (
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
 )
-from core.api.dependencies import get_async_session, AsyncSession
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session,
+    get_async_tx_session,
+)
 
 tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -104,7 +89,7 @@ tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 )
 async def create(
     request_model: TaskCreateRequestModel,
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
 ) -> ResponseModel[TaskInCRUDResponse]:
     result = await tasks_services.create_task(
         session=session, request_model=request_model
@@ -147,7 +132,7 @@ async def get_by_id(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def update(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskUpdateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
@@ -164,7 +149,7 @@ async def update(
     response_model=ResponseModel[bool],
 )
 async def delete(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[bool]:
     result = await tasks_services.delete_task_by_id(session=session, task_id=task_id)
@@ -172,7 +157,69 @@ async def delete(
 
 ```
 
-## `/home/askfiy/Code/axon/core/api/routes/tasks_chat.py`
+## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_audit.py`
+
+```python
+from typing import Annotated
+
+import fastapi
+from fastapi import Depends
+
+from core.models.http import (
+    ResponseModel,
+    PageinationRequest,
+    PageinationResponse,
+    TaskAuditInCRUDResponse,
+    TaskAuditCreateRequestModel,
+)
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session,
+    get_async_tx_session,
+)
+from core.services import tasks_audit as tasks_audit_services
+
+
+tasks_audit_route = fastapi.APIRouter(prefix="/{task_id}/audit", tags=["Tasks-audit"])
+
+
+@tasks_audit_route.get(
+    path="",
+    name="获取审查记录",
+    status_code=fastapi.status.HTTP_200_OK,
+    response_model=PageinationResponse[TaskAuditInCRUDResponse],
+)
+async def get(
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    task_id: int = fastapi.Path(description="任务 ID"),
+    pageination: PageinationRequest = Depends(PageinationRequest),
+) -> PageinationResponse[TaskAuditInCRUDResponse]:
+    result = await tasks_audit_services.get_audits(
+        task_id=task_id, session=session, pageination=pageination
+    )
+    return result
+
+
+@tasks_audit_route.post(
+    path="",
+    name="插入审查记录",
+    status_code=fastapi.status.HTTP_201_CREATED,
+    response_model=ResponseModel[TaskAuditInCRUDResponse],
+)
+async def insert_task_chat(
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
+    request_model: TaskAuditCreateRequestModel,
+    task_id: int = fastapi.Path(description="任务 ID"),
+) -> ResponseModel[TaskAuditInCRUDResponse]:
+    result = await tasks_audit_services.insert_task_audit(
+        session=session, task_id=task_id, request_model=request_model
+    )
+    return ResponseModel(result=result)
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_chat.py`
 
 ```python
 from typing import Annotated
@@ -189,7 +236,12 @@ from core.models.http import (
     TaskChatInCRUDResponse,
 )
 from core.services import tasks_chat as tasks_chat_services
-from core.api.dependencies import get_async_session, AsyncSession
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session,
+    get_async_tx_session,
+)
 
 
 tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat"])
@@ -219,7 +271,7 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskChatCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
@@ -230,7 +282,7 @@ async def insert_task_chat(
 
 ```
 
-## `/home/askfiy/Code/axon/core/api/routes/tasks_history.py`
+## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_history.py`
 
 ```python
 from typing import Annotated
@@ -247,7 +299,12 @@ from core.models.http import (
     TaskHistoryCreateRequestModel,
 )
 from core.services import tasks_history as tasks_history_services
-from core.api.dependencies import get_async_session, AsyncSession
+from core.api.dependencies import (
+    get_async_session,
+    get_async_tx_session,
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
 tasks_history_route = fastapi.APIRouter(
@@ -279,7 +336,7 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def insert_task_history(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskHistoryCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
@@ -290,7 +347,274 @@ async def insert_task_history(
 
 ```
 
-## `/home/askfiy/Code/axon/core/config/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/components/__init__.py`
+
+```python
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/components/boker.py`
+
+```python
+import logging
+import asyncio
+from typing import Any, TypeAlias
+from collections.abc import Callable, Coroutine
+from datetime import datetime, timezone
+
+import asyncio_atexit
+import redis.asyncio as redis
+from redis.typing import FieldT, EncodableT
+from redis.exceptions import ResponseError
+from pydantic import BaseModel, Field
+
+RbokerMessage: TypeAlias = Any
+
+
+class RbokerPayloadMetadata(BaseModel):
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RbokerPayloadExcInfo(BaseModel):
+    message: str
+    type: str
+    failed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RbokerPayload(BaseModel):
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    content: RbokerMessage
+    exc_info: RbokerPayloadExcInfo | None = Field(default=None)
+
+
+class RBoker:
+    """
+    基于 Redis Streams 实现的发布订阅系统
+    """
+
+    def __init__(self, redis_client: redis.Redis):
+        self._client = redis_client
+        self._stop = False
+        self._consumer_tasks: list[asyncio.Task[None]] = []
+
+    async def _callback_ack(
+        self,
+        topic: str,
+        group_id: str,
+        message_id: str,
+        rboker_message: RbokerPayload,
+        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+    ):
+        try:
+            await callback(rboker_message.content)
+        except Exception as exc:
+            rboker_message.exc_info = RbokerPayloadExcInfo(
+                message=str(exc), type=exc.__class__.__name__
+            )
+            print(rboker_message.model_dump_json())
+            # 放入死信队列. 后续可通过消费该死信队列获得新的讯息
+            await self._client.xadd(
+                f"{topic}-dlq",
+                {"message": rboker_message.model_dump_json()},
+                maxlen=1000,
+            )
+            logging.error(
+                f"Error in background task for message {message_id}: {exc}",
+                exc_info=True,
+            )
+        finally:
+            await self._client.xack(topic, group_id, message_id)
+
+    async def _consume_worker(
+        self,
+        topic: str,
+        group_id: str,
+        consumer_name: str,
+        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+    ):
+        while True:
+            try:
+                # xreadgroup 会阻塞，但只会阻塞当前这一个任务，不会影响其他任务
+                # block 0 一直阻塞
+                response = await self._client.xreadgroup(
+                    group_id, consumer_name, {topic: ">"}, count=1, block=0
+                )
+                if not response:
+                    continue
+
+                stream_key, messages = response[0]
+                message_id, data = messages[0]
+
+                try:
+                    rboker_message = RbokerPayload.model_validate_json(data["message"])
+
+                    asyncio.create_task(
+                        self._callback_ack(
+                            topic=topic,
+                            group_id=group_id,
+                            message_id=message_id,
+                            rboker_message=rboker_message,
+                            callback=callback,
+                        )
+                    )
+
+                except Exception as e:
+                    logging.error(
+                        f"Error processing message {message_id.decode()}: {e}",
+                        exc_info=True,
+                    )
+
+            except asyncio.CancelledError:
+                logging.info(f"Consumer '{consumer_name}' is shutting down.")
+                break
+
+            except Exception as e:
+                logging.error(
+                    f"Consumer '{consumer_name}' loop error: {e}", exc_info=True
+                )
+                await asyncio.sleep(5)
+
+    async def send(self, topic: str, message: RbokerMessage) -> str:
+        rboker_message = RbokerPayload(content=message)
+
+        message_payload: dict[FieldT, EncodableT] = {
+            "message": rboker_message.model_dump_json()
+        }
+        message_id = await self._client.xadd(topic, message_payload)
+        logging.info(f"Sent message {message_id} to topic '{topic}'")
+        return message_id
+
+    async def consumer(
+        self,
+        topic: str,
+        group_id: str,
+        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        count: int = 1,
+        *args: Any,
+        **kwargs: Any,
+    ):
+        """
+        创建并启动消费者后台任务。
+        """
+        try:
+            await self._client.xgroup_create(topic, group_id, mkstream=True)
+            logging.info(f"Consumer group '{group_id}' created for topic '{topic}'.")
+        except ResponseError as e:
+            if "BUSYGROUP" not in str(e):
+                raise
+
+        for i in range(count):
+            consumer_name = f"{group_id}-consumer-{i + 1}"
+            task = asyncio.create_task(
+                self._consume_worker(topic, group_id, consumer_name, callback)
+            )
+            self._consumer_tasks.append(task)
+            logging.info(f"Started consumer task '{consumer_name}' on topic '{topic}'.")
+
+        if not self._stop:
+            asyncio_atexit.register(self.shutdown)  # pyright: ignore[reportUnknownMemberType]
+            self._stop = True
+
+    async def shutdown(self):
+        logging.info("Shutting down consumer tasks...")
+
+        for task in self._consumer_tasks:
+            task.cancel()
+
+        await asyncio.gather(*self._consumer_tasks, return_exceptions=True)
+        logging.info("All consumer tasks have been shut down.")
+
+        self._client.close()
+
+
+if __name__ == "__main__":
+    redis_client = redis.from_url("redis://127.0.0.1:6379", decode_responses=True)  # pyright: ignore[reportUnknownMemberType]
+
+    async def tester():
+        topic = "Test Topic"
+        group = "Test Group"
+
+        async def handle_message(message: RbokerMessage):
+            print(message)
+            raise RuntimeError("Exc")
+
+        boker = RBoker(redis_client=redis_client)
+        await boker.consumer(
+            topic=topic, group_id=group, callback=handle_message, count=5
+        )
+
+        count = 1
+        import uuid
+
+        while True:
+            await boker.send(topic=topic, message=f"Hi {count}: {uuid.uuid4()}")
+            count += 1
+            await asyncio.sleep(0.5)
+
+    asyncio.run(tester())
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/components/cache.py`
+
+```python
+import json
+from typing import Any
+
+import asyncio_atexit
+import redis.asyncio as redis
+
+
+class RCache:
+    """
+    基于 Redis 实现的缓存系统
+    """
+
+    def __init__(self, redis_client: redis.Redis):
+        self._client = redis_client
+        asyncio_atexit.register(self._client.close)  # pyright: ignore[reportUnknownMemberType]
+
+    async def has(self, key: str) -> bool:
+        return await self._client.exists(key) > 0
+
+    async def get(self, key: str, default: Any = None) -> Any:
+        value = await self._client.get(key)
+
+        if value is None:
+            return default
+
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+        if not ttl and await self._client.exists(key):
+            current_ttl = await self._client.ttl(key)
+            if current_ttl == -1:
+                raise ValueError(
+                    f"Key '{key}' exists without TTL. Refusing to set without TTL."
+                )
+
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value)
+
+        await self._client.set(key, value, ex=ttl)
+
+    async def delete(self, key: str) -> int:
+        return await self._client.delete(key)
+
+    async def persist(self, key: str) -> bool:
+        current_ttl = await self._client.ttl(key)
+
+        if current_ttl == -1:
+            raise ValueError(f"Key '{key}' has no TTL. Cannot persist.")
+
+        return await self._client.persist(key)
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/config/__init__.py`
 
 ```python
 from .settings import Settings
@@ -299,14 +623,14 @@ env_helper = Settings()  # pyright: ignore[reportCallIssue]
 
 ```
 
-## `/home/askfiy/Code/axon/core/config/settings.py`
+## `/Users/askfiy/project/coding/axon/core/config/settings.py`
 
 ```python
 import os
 from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import MySQLDsn, field_validator
+from pydantic import Field, MySQLDsn, RedisDsn, field_validator
 
 
 configure_path = os.path.join(".", ".env", ".local.env")
@@ -315,34 +639,50 @@ configure_path = os.path.join(".", ".env", ".local.env")
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(case_sensitive=True, env_file=configure_path)
 
-    SYNC_DB_URL: str
-    ASYNC_DB_URL: str
-    OPENAI_API_KEY: str
+    SYNC_DB_URL: str = Field(examples=["mysql+pymysql://root:123@127.0.0.1:3306/db1"])
+    ASYNC_DB_URL: str = Field(examples=["mysql+asyncmy://root:123@127.0.0.1:3306/db1"])
+    OPENAI_API_KEY: str = Field(examples=["sk-proj-..."])
+    ASYNC_REDIS_URL: str = Field(examples=[""])
 
     @field_validator("SYNC_DB_URL", "ASYNC_DB_URL", mode="before")
     @classmethod
-    def _validate_db_url(cls, v: Any) -> str:
-        if not isinstance(v, str):
+    def _validate_db_url(cls, db_url: Any) -> str:
+        if not isinstance(db_url, str):
             raise TypeError("Database URL must be a string")
         try:
             # 验证是否符合 MySQLDsn 类型.
-            MySQLDsn(v)
+            MySQLDsn(db_url)
         except Exception as e:
             raise ValueError(f"Invalid MySQL DSN: {e}") from e
 
-        return str(v)
+        return str(db_url)
+
+    @field_validator("ASYNC_REDIS_URL", mode="before")
+    @classmethod
+    def _validate_redis_url(cls, redis_url: Any) -> str:
+        if not isinstance(redis_url, str):
+            raise TypeError("Redis URL must be a string")
+        try:
+            # 验证是否符合 RedisDsn 类型.
+            RedisDsn(redis_url)
+        except Exception as e:
+            raise ValueError(f"Invalid redis_url DSN: {e}") from e
+
+        return str(redis_url)
 
 ```
 
-## `/home/askfiy/Code/axon/core/database/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/database/__init__.py`
 
 ```python
 
 ```
 
-## `/home/askfiy/Code/axon/core/database/connection.py`
+## `/Users/askfiy/project/coding/axon/core/database/connection.py`
 
 ```python
+from typing import TypeAlias
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from core.config import env_helper
@@ -366,30 +706,229 @@ async def get_async_session():
         yield session
 
 
-__all__ = ["engine", "get_async_session"]
+async def get_async_tx_session():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            raise exc
+
+
+AsyncTxSession: TypeAlias = AsyncSession
+
+__all__ = [
+    "engine",
+    "get_async_session",
+    "get_async_tx_session",
+    "AsyncTxSession",
+    "AsyncSession",
+]
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/middleware/__init__.py`
+
+```python
+from .context import GlobalContextMiddleware
+from .monitor import GlobalMonitorMiddleware
+
+__all__ = ["GlobalContextMiddleware", "GlobalMonitorMiddleware"]
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/middleware/context.py`
+
+```python
+"""
+ASGI 层面的中间件. 旨在提供类似于 Flask 的 g 对象.
+"""
+
+from typing import Any, override
+from contextvars import ContextVar, copy_context
+from dataclasses import dataclass
+
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+
+class GlobalContextException(Exception):
+    pass
+
+
+@dataclass
+class Globals:
+    _context_data = ContextVar("context_data", default={})
+
+    def clear(self) -> None:
+        self._context_data.set({})
+
+    def get(self, name: str, default: Any = None) -> Any:
+        return self._context_data.get().get(name, default)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._context_data.get()[name]
+        except KeyError:
+            raise GlobalContextException(f"'{name}' is not found from global context.")
+
+    @override
+    def __setattr__(self, name: str, value: Any) -> None:
+        self._context_data.get()[name] = value
+
+
+class GlobalContextMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        g.clear()
+
+        ctx = copy_context()
+        await ctx.run(self.app, scope, receive, send)
+
+
+g = Globals()
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/middleware/monitor.py`
+
+```python
+import time
+import json
+import logging
+import typing
+from typing import override
+
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.middleware.base import (
+    BaseHTTPMiddleware,
+    RequestResponseEndpoint,
+    _StreamingResponse,  # pyright: ignore[reportPrivateUsage]  # noqa: F401
+)
+
+logger = logging.getLogger("monitor-middleware")
+
+
+class GlobalMonitorMiddleware(BaseHTTPMiddleware):
+    FILTER_API_PATH = ["/docs", "/openapi.json"]
+
+    def get_request_info(self, request: Request) -> str:
+        method = request.method
+        path = request.url.path
+
+        query = request.url.query
+        http_version = request.scope.get("http_version", "unknown")
+
+        full_path = path
+
+        if query:
+            full_path += f"?{query}"
+
+        return f"{method} {full_path} HTTP/{http_version}"
+
+    async def get_response_body(self, response: _StreamingResponse):
+        response_body_chunks: list[bytes] = []
+
+        async for chunk in response.body_iterator:
+            response_body_chunks.append(typing.cast("bytes", chunk))
+
+        return b"".join(response_body_chunks)
+
+    async def get_request_log(self, request: Request) -> str:
+        logger_info = ""
+
+        request_body = await request.body()
+
+        if request_body:
+            try:
+                log_data = json.loads(request_body)
+                logger_info = f", JSON: {log_data}"
+            except json.JSONDecodeError:
+                logger_info = (
+                    f", (Non-JSON): {request_body.decode(errors='ignore')[:500]}..."
+                )
+
+        return logger_info
+
+    async def get_response_log(self, response_body: bytes) -> str:
+        logger_info = ""
+
+        if response_body:
+            try:
+                log_data = json.loads(response_body)
+                logger_info = f", JSON: {log_data}"
+            except json.JSONDecodeError:
+                logger_info = (
+                    f", (Non-JSON): {response_body.decode(errors='ignore')[:500]}..."
+                )
+
+        return logger_info
+
+    @override
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if request.url.path in self.FILTER_API_PATH:
+            return await call_next(request)
+
+        request_info = self.get_request_info(request)
+
+        start_time = time.perf_counter()
+        request_loger = await self.get_request_log(request)
+
+        logger.info(f"Request:  '{request_info}'{request_loger}")
+
+        response: _StreamingResponse = await call_next(request)
+
+        response_body = await self.get_response_body(response)
+
+        process_time = (time.perf_counter() - start_time) * 1000
+        response_loger = await self.get_response_log(response_body)
+
+        logger.info(
+            f"Response: '{request_info} {response.status_code}' ({process_time:.2f}ms){response_loger}"
+        )
+
+        return Response(
+            content=response_body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type,
+        )
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/models/__init__.py`
 
 ```python
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/__init__.py`
 
 ```python
 from .base import BaseTableModel
 from .tasks import Tasks
 from .tasks_chat import TasksChat
+from .tasks_audit import TasksAudit
 from .tasks_history import TasksHistory
 from .tasks_metadata import TasksMetadata
 
-__all__ = ["BaseTableModel", "Tasks", "TasksChat", "TasksHistory", "TasksMetadata"]
+__all__ = [
+    "BaseTableModel",
+    "Tasks",
+    "TasksChat",
+    "TasksAudit",
+    "TasksHistory",
+    "TasksMetadata",
+]
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/base.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/base.py`
 
 ```python
 from typing import Any
@@ -480,7 +1019,7 @@ def set_deleted_at_on_soft_delete(
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/tasks.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/tasks.py`
 
 ```python
 import uuid
@@ -561,6 +1100,13 @@ class Tasks(BaseTableModel):
     details: Mapped[str] = mapped_column(
         sa.Text, nullable=False, comment="任务的详细信息"
     )
+    is_decomposed: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        comment="已分解任务",
+        server_default=sa.text("0"),
+    )
     dependencies: Mapped[Optional[list[int]]] = mapped_column(
         sa.JSON,
         default=sa.func.json_array(),
@@ -610,7 +1156,68 @@ class Tasks(BaseTableModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/tasks_chat.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/tasks_audit.py`
+
+```python
+import sqlalchemy as sa
+from sqlalchemy.orm import Mapped, mapped_column
+
+from core.models.enums import TaskState, TaskAuditSource
+from core.models.db.base import BaseTableModel
+from core.utils.enums import enum_values
+
+
+class TasksAudit(BaseTableModel):
+    __tablename__ = "tasks_audit"
+    __table_args__ = (
+        sa.Index("idx_tasks_audit_task_id_created_at", "task_id", "created_at"),
+        {"comment": "任务状态审计表"},
+    )
+
+    task_id: Mapped[int] = mapped_column(
+        sa.BigInteger,
+        sa.ForeignKey("tasks.id"),
+        nullable=False,
+        index=True,
+        comment="关联任务ID",
+    )
+
+    from_state: Mapped[TaskState] = mapped_column(
+        sa.Enum(TaskState, values_callable=enum_values),
+        nullable=False,
+        index=True,
+        comment="任务执行状态",
+    )
+
+    to_state: Mapped[TaskState] = mapped_column(
+        sa.Enum(TaskState, values_callable=enum_values),
+        nullable=False,
+        index=True,
+        comment="任务执行状态",
+    )
+
+    source: Mapped[TaskAuditSource] = mapped_column(
+        sa.Enum(TaskAuditSource, values_callable=enum_values),
+        nullable=False,
+        index=True,
+        comment="触发变更的来源",
+    )
+
+    source_context: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        comment="变更来源的上下文信息, 如 user_id, worker_id 等等 ..",
+    )
+
+    comment: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        comment="变更上下文的注释, 为什么要变更. 变更背景是什么 ..",
+    )
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/models/db/tasks_chat.py`
 
 ```python
 import typing
@@ -655,7 +1262,7 @@ class TasksChat(BaseTableModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/tasks_history.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/tasks_history.py`
 
 ```python
 import typing
@@ -707,7 +1314,7 @@ class TasksHistory(BaseTableModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/db/tasks_metadata.py`
+## `/Users/askfiy/project/coding/axon/core/models/db/tasks_metadata.py`
 
 ```python
 from typing import TYPE_CHECKING
@@ -761,7 +1368,7 @@ class TasksMetadata(BaseTableModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/enums.py`
+## `/Users/askfiy/project/coding/axon/core/models/enums.py`
 
 ```python
 from enum import StrEnum
@@ -772,12 +1379,14 @@ class TaskState(StrEnum):
     INITIAL = "initial"
     # 任务等待调度
     SCHEDULED = "scheduled"
+    # 任务进入队列
+    ENQUEUED = "enqueued"
+    # 任务正在执行
+    ACTIVATING = "activating"
     # 任务等待子任务
     PENDING = "pending"
     # 任务等待用户输入
     WAITING = "waiting"
-    # 任务正在执行
-    ACTIVATING = "activating"
     # 任务正在重试
     RETRYING = "retrying"
     # 任务已被取消
@@ -793,14 +1402,28 @@ class MessageRole(StrEnum):
     SYSTEM = "system"
     ASSISTANT = "assistant"
 
+
+class TaskAuditSource(StrEnum):
+    """
+    触发任务状态变更的“来源”枚举
+    """
+
+    USER = "user"
+    ADMIN = "admin"
+    AGENT = "agent"
+    WORKER = "worker"
+    SCHEDULER = "scheduler"
+    MONITOR = "monitor"
+
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/__init__.py`
 
 ```python
 from .base import BaseHttpModel, ResponseModel, PageinationRequest, PageinationResponse
 from .tasks import TaskInCRUDResponse, TaskCreateRequestModel, TaskUpdateRequestModel
 from .tasks_chat import TaskChatInCRUDResponse, TaskChatCreateRequestModel
+from .tasks_audit import TaskAuditInCRUDResponse, TaskAuditCreateRequestModel
 from .tasks_history import TaskHistoryInCRUDResponse, TaskHistoryCreateRequestModel
 
 __all__ = [
@@ -811,6 +1434,8 @@ __all__ = [
     "TaskInCRUDResponse",
     "TaskCreateRequestModel",
     "TaskUpdateRequestModel",
+    "TaskAuditInCRUDResponse",
+    "TaskAuditCreateRequestModel",
     "TaskChatInCRUDResponse",
     "TaskChatCreateRequestModel",
     "TaskHistoryInCRUDResponse",
@@ -819,7 +1444,7 @@ __all__ = [
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/base.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/base.py`
 
 ```python
 import re
@@ -922,7 +1547,7 @@ class PageinationResponse(BaseHttpResponseModel[T]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/tasks.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/tasks.py`
 
 ```python
 import datetime
@@ -1012,7 +1637,34 @@ class TaskUpdateRequestModel(BaseHttpModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/tasks_chat.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/tasks_audit.py`
+
+```python
+import datetime
+
+from core.models.enums import TaskState, TaskAuditSource
+from core.models.http.base import BaseHttpModel
+
+
+class TaskAuditInCRUDResponse(BaseHttpModel):
+    from_state: TaskState
+    to_state: TaskState
+    source: TaskAuditSource
+    source_context: str
+    comment: str
+    created_at: datetime.datetime
+
+
+class TaskAuditCreateRequestModel(BaseHttpModel):
+    from_state: TaskState
+    to_state: TaskState
+    source: TaskAuditSource
+    source_context: str
+    comment: str
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/models/http/tasks_chat.py`
 
 ```python
 import datetime
@@ -1033,7 +1685,7 @@ class TaskChatCreateRequestModel(BaseHttpModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/tasks_history.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/tasks_history.py`
 
 ```python
 import datetime
@@ -1056,7 +1708,7 @@ class TaskHistoryCreateRequestModel(BaseHttpModel):
 
 ```
 
-## `/home/askfiy/Code/axon/core/models/http/tasks_metadata.py`
+## `/Users/askfiy/project/coding/axon/core/models/http/tasks_metadata.py`
 
 ```python
 from pydantic import field_serializer
@@ -1086,24 +1738,26 @@ class TaskMetaDataResponseModel:
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/__init__.py`
 
 ```python
 from .tasks import TasksCRUDRepository
-from .tasks_metadata import TasksMetadataRepository
 from .tasks_chat import TasksChatRepository
+from .tasks_audit import TasksAuditRepository
 from .tasks_history import TasksHistoryRepository
+from .tasks_metadata import TasksMetadataRepository
 
 __all__ = [
     "TasksCRUDRepository",
     "TasksMetadataRepository",
     "TasksChatRepository",
+    "TasksAuditRepository",
     "TasksHistoryRepository",
 ]
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/base.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/base.py`
 
 ```python
 import typing
@@ -1268,7 +1922,7 @@ class BaseCRUDRepository(Generic[ModelType]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/tasks.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks.py`
 
 ```python
 from typing import override, Any
@@ -1462,7 +2116,39 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/tasks_chat.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_audit.py`
+
+```python
+import sqlalchemy as sa
+
+from core.models.db import TasksAudit
+from core.repository.crud.base import BaseCRUDRepository
+from core.models.http import (
+    PageinationRequest,
+    PageinationResponse,
+    TaskAuditInCRUDResponse,
+)
+
+
+class TasksAuditRepository(BaseCRUDRepository[TasksAudit]):
+    async def get_audits_pageination_response(
+        self,
+        task_id: int,
+        pageination: PageinationRequest,
+    ) -> PageinationResponse[TaskAuditInCRUDResponse]:
+        query_stmt = sa.select(self.model).where(
+            self.model.task_id == task_id, sa.not_(self.model.is_deleted)
+        )
+
+        return await super().get_pageination_response_by_stmt(
+            pageination_request=pageination,
+            stmt=query_stmt,
+            response_model_cls=TaskAuditInCRUDResponse,
+        )
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_chat.py`
 
 ```python
 import sqlalchemy as sa
@@ -1483,7 +2169,7 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
         pageination: PageinationRequest,
     ) -> PageinationResponse[TaskChatInCRUDResponse]:
         query_stmt = sa.select(self.model).where(
-            TasksChat.task_id == task_id, sa.not_(self.model.is_deleted)
+            self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
 
         return await super().get_pageination_response_by_stmt(
@@ -1494,7 +2180,7 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/tasks_history.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_history.py`
 
 ```python
 import sqlalchemy as sa
@@ -1515,7 +2201,7 @@ class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
         pageination: PageinationRequest,
     ) -> PageinationResponse[TaskHistoryInCRUDResponse]:
         query_stmt = sa.select(self.model).where(
-            TasksHistory.task_id == task_id, sa.not_(self.model.is_deleted)
+            self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
 
         return await super().get_pageination_response_by_stmt(
@@ -1526,7 +2212,7 @@ class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/repository/crud/tasks_metadata.py`
+## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_metadata.py`
 
 ```python
 from core.models.db import TasksMetadata
@@ -1538,24 +2224,23 @@ class TasksMetadataRepository(BaseCRUDRepository[TasksMetadata]):
 
 ```
 
-## `/home/askfiy/Code/axon/core/scheduler/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/scheduler/__init__.py`
 
 ```python
 
 ```
 
-## `/home/askfiy/Code/axon/core/services/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/services/__init__.py`
 
 ```python
 
 ```
 
-## `/home/askfiy/Code/axon/core/services/tasks.py`
+## `/Users/askfiy/project/coding/axon/core/services/tasks.py`
 
 ```python
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.db import Tasks
 from core.models.http import (
@@ -1570,8 +2255,7 @@ from core.repository.crud import (
     TasksCRUDRepository,
     TasksMetadataRepository,
 )
-
-from core.utils.decorators import transactional
+from core.api.dependencies import AsyncSession, AsyncTxSession
 
 
 async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
@@ -1593,8 +2277,7 @@ async def get_tasks(
     return await tasks_repo.get_tasks_pageination_response(pageination=pageination)
 
 
-@transactional
-async def delete_task_by_id(session: AsyncSession, task_id: int) -> bool:
+async def delete_task_by_id(session: AsyncTxSession, task_id: int) -> bool:
     tasks_repo = TasksCRUDRepository(session=session)
     # 我们会在 repo 层涉及到是否删除 metadata_info, 所以先将其 JOIN LOAD 出来
     task = await tasks_repo.get(
@@ -1611,9 +2294,8 @@ async def delete_task_by_id(session: AsyncSession, task_id: int) -> bool:
     return bool(task.is_deleted)
 
 
-@transactional
 async def create_task(
-    session: AsyncSession, request_model: TaskCreateRequestModel
+    session: AsyncTxSession, request_model: TaskCreateRequestModel
 ) -> TaskInCRUDResponse:
     task_info = request_model.model_dump(exclude={"metadata"})
 
@@ -1651,9 +2333,8 @@ async def create_task(
     return TaskInCRUDResponse.model_validate(task)
 
 
-@transactional
 async def update_task(
-    session: AsyncSession, task_id: int, request_model: TaskUpdateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskUpdateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,
@@ -1695,14 +2376,69 @@ async def update_task(
 
 ```
 
-## `/home/askfiy/Code/axon/core/services/tasks_chat.py`
+## `/Users/askfiy/project/coding/axon/core/services/tasks_audit.py`
 
 ```python
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.models.db import Tasks
+from core.models.http import (
+    PageinationRequest,
+    PageinationResponse,
+    TaskAuditInCRUDResponse,
+    TaskAuditCreateRequestModel,
+)
+from core.repository.crud import (
+    TasksCRUDRepository,
+    TasksAuditRepository,
+)
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+)
+
+
+async def get_audits(
+    task_id: int, session: AsyncSession, pageination: PageinationRequest
+) -> PageinationResponse[TaskAuditInCRUDResponse]:
+    tasks_audit_repo = TasksAuditRepository(session=session)
+
+    return await tasks_audit_repo.get_audits_pageination_response(
+        task_id=task_id,
+        pageination=pageination,
+    )
+
+
+async def insert_task_audit(
+    session: AsyncTxSession, task_id: int, request_model: TaskAuditCreateRequestModel
+) -> TaskAuditInCRUDResponse:
+    tasks_repo = TasksCRUDRepository(
+        session=session,
+    )
+    task_exists = await tasks_repo.exists(pk=task_id)
+
+    if not task_exists:
+        raise HTTPException(
+            status_code=fastapi.status.HTTP_404_NOT_FOUND,
+            detail=f"任务: {task_id} 不存在",
+        )
+
+    tasks_audit_repo = TasksAuditRepository(session=session)
+
+    task_audit = await tasks_audit_repo.create(
+        create_info={"task_id": task_id, **request_model.model_dump()}
+    )
+
+    return TaskAuditInCRUDResponse.model_validate(task_audit)
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/services/tasks_chat.py`
+
+```python
+import fastapi
+from fastapi import HTTPException
+
 from core.models.http import (
     PageinationRequest,
     PageinationResponse,
@@ -1716,7 +2452,10 @@ from core.repository.crud import (
     TasksChatRepository,
 )
 
-from core.utils.decorators import transactional
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
 async def get_chats(
@@ -1730,9 +2469,8 @@ async def get_chats(
     )
 
 
-@transactional
 async def insert_task_chat(
-    session: AsyncSession, task_id: int, request_model: TaskChatCreateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskChatCreateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,
@@ -1758,12 +2496,11 @@ async def insert_task_chat(
 
 ```
 
-## `/home/askfiy/Code/axon/core/services/tasks_history.py`
+## `/Users/askfiy/project/coding/axon/core/services/tasks_history.py`
 
 ```python
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.http import (
     PageinationRequest,
@@ -1778,7 +2515,7 @@ from core.repository.crud import (
     TasksHistoryRepository,
 )
 
-from core.utils.decorators import transactional
+from core.api.dependencies import AsyncSession, AsyncTxSession
 
 
 async def get_histories(
@@ -1792,9 +2529,8 @@ async def get_histories(
     )
 
 
-@transactional
 async def insert_task_history(
-    session: AsyncSession, task_id: int, request_model: TaskHistoryCreateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskHistoryCreateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,
@@ -1820,13 +2556,22 @@ async def insert_task_history(
 
 ```
 
-## `/home/askfiy/Code/axon/core/utils/__init__.py`
+## `/Users/askfiy/project/coding/axon/core/utils/__init__.py`
 
 ```python
 
 ```
 
-## `/home/askfiy/Code/axon/core/utils/datetime.py`
+## `/Users/askfiy/project/coding/axon/core/utils/context.py`
+
+```python
+from core.middleware.context import g
+
+__all__ = ["g"]
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/utils/datetime.py`
 
 ```python
 from datetime import datetime, timezone
@@ -1844,49 +2589,87 @@ def sql_datetime_format(dt: datetime | None = None) -> str:
 
 ```
 
-## `/home/askfiy/Code/axon/core/utils/decorators.py`
+## `/Users/askfiy/project/coding/axon/core/utils/decorators.py`
 
 ```python
-import typing
-from typing import Callable, Any, TypeVar, ParamSpec
-from functools import wraps
-from collections.abc import Awaitable
+import logging
+import functools
+from typing import TypeVar, ParamSpec
+from collections.abc import Awaitable, Callable
 
+from pyinstrument import Profiler
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-T = TypeVar("T")
-R = TypeVar("R", bound=Awaitable[Any])
 P = ParamSpec("P")
+R = TypeVar("R")
+
+logger = logging.getLogger()
 
 
 def transactional(
-    func: Callable[..., R],
-) -> Callable[..., R]:
+    func: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R]]:
     """
-    安全的自动提交回滚事务.
+    安全的自动提交回滚事务。
     """
 
-    @wraps(func)
-    async def wrapper(
-        session: AsyncSession | Any, *args: P.args, **kwargs: P.kwargs
-    ) -> Any:
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        session: AsyncSession | None = kwargs.get("session")
         if not isinstance(session, AsyncSession):
-            raise TypeError("添加了自动事务的业务层函数. 第一个参数必须是 session.")
+            for arg in args:
+                if isinstance(arg, AsyncSession):
+                    session = arg
+                    break
+
+        if not session:
+            raise TypeError(
+                "Decorated function must have an 'AsyncSession' instance as an argument."
+            )
 
         try:
-            result = await func(session, *args, **kwargs)
+            result = await func(*args, **kwargs)
             await session.commit()
             return result
         except Exception as exc:
             await session.rollback()
             raise exc
 
-    return typing.cast(Callable[..., R], wrapper)
+    return wrapper
+
+
+def profiled(
+    func: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R]]:
+    """
+    打印性能报告到控制台。
+    """
+
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        profiler = Profiler()
+
+        profiler.start()
+
+        response = await func(*args, **kwargs)
+
+        profiler.stop()
+
+        report_text = profiler.output_text(unicode=True, color=True)
+        logger.info("\n" + "=" * 80)
+        logger.info(f"📊 PyInstrument Profile Report for Endpoint: '{func.__name__}'")
+        logger.info("=" * 80)
+        logger.info(report_text)
+        logger.info("=" * 80 + "\n")
+
+        return response
+
+    return wrapper
 
 ```
 
-## `/home/askfiy/Code/axon/core/utils/enums.py`
+## `/Users/askfiy/project/coding/axon/core/utils/enums.py`
 
 ```python
 from enum import StrEnum
@@ -1897,37 +2680,135 @@ def enum_values(enum_class: type[StrEnum]) -> list[str]:
 
 ```
 
-## `/home/askfiy/Code/axon/main.py`
+## `/Users/askfiy/project/coding/axon/core/utils/logger.py`
 
 ```python
+from datetime import datetime
+import sys
+import logging
+from typing import override
+
+from colorlog import ColoredFormatter
+
+from core.utils.context import g
+
+
+class Formatter(ColoredFormatter):
+    @override
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        super_time = super().formatTime(record, datefmt)
+        return f"{super_time}.{int(record.msecs):03d}"
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        record.space = " "
+        record.trace_id = g.get("trace_id", "X-Trace-ID")
+
+        record.timestamp = self.formatTime(record, self.datefmt)
+        return super().format(record)
+
+
+formatter = (
+    "%(log_color)s%(levelname)s%(reset)s:"
+    "%(white)s%(space)-5s%(reset)s"
+    "[%(light_green)s%(timestamp)s%(reset)s] "
+    "[%(light_blue)s%(name)s%(reset)s] - "
+    "[%(light_yellow)s%(funcName)s:%(lineno)s]%(reset)s - "
+    "[%(cyan)s%(trace_id)s%(reset)s] "
+    "%(bold_white)s%(message)s%(reset)s"
+)
+
+console_formatter = Formatter(
+    formatter,
+    reset=True,
+    log_colors={
+        "DEBUG": "cyan",
+        "INFO": "green",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "red,bg_white",
+    },
+    datefmt="%Y-%m-%d %H:%M:%S",
+    secondary_log_colors={},
+    style="%",
+)
+
+
+def setup_logging(level: int | str = logging.INFO) -> None:
+    root_logger = logging.getLogger()
+
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    root_logger.setLevel(level)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(console_formatter)
+
+    root_logger.addHandler(console_handler)
+
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_errors_logger = logging.getLogger("uvicorn.error")
+
+    uvicorn_errors_logger.handlers.clear()
+    uvicorn_access_logger.handlers.clear()
+
+    uvicorn_errors_logger.propagate = True
+    uvicorn_access_logger.propagate = False
+
+```
+
+## `/Users/askfiy/project/coding/axon/main.py`
+
+```python
+import uuid
+import logging
 from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 
 import uvicorn
 import fastapi
-from fastapi import Request
+from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException
 
-from core.api.routes import api_router
 from core.models.http import ResponseModel
+from core.middleware import GlobalContextMiddleware, GlobalMonitorMiddleware
+from core.api.routes import api_router
+from core.api.dependencies import global_headers
+from core.utils.logger import setup_logging
+from core.utils.context import g
+
+logger = logging.getLogger("Axon")
 
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
+    setup_logging()
     yield
 
 
-app = fastapi.FastAPI(title="Axon", lifespan=lifespan)
+app = fastapi.FastAPI(
+    title="Axon", lifespan=lifespan, dependencies=[Depends(global_headers)]
+)
+
+app.add_middleware(GlobalContextMiddleware)
+app.add_middleware(GlobalMonitorMiddleware)
+
+
+@app.middleware("http")
+async def trace(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    g.trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = g.trace_id
+    return response
 
 
 @app.exception_handler(Exception)
 async def exception_handler(request: Request, exc: Exception):
     status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
     message = str(exc)
-
-    if isinstance(exc, fastapi.HTTPException):
-        status_code = exc.status_code
-        message = exc.detail
 
     return JSONResponse(
         status_code=status_code,

@@ -12,7 +12,12 @@ from core.models.http import (
     TaskChatInCRUDResponse,
 )
 from core.services import tasks_chat as tasks_chat_services
-from core.api.dependencies import get_async_session, AsyncSession
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session,
+    get_async_tx_session,
+)
 
 
 tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat"])
@@ -42,7 +47,7 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskChatCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:

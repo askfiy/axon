@@ -1,6 +1,5 @@
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.http import (
     PageinationRequest,
@@ -15,7 +14,10 @@ from core.repository.crud import (
     TasksChatRepository,
 )
 
-from core.utils.decorators import transactional
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
 async def get_chats(
@@ -29,9 +31,8 @@ async def get_chats(
     )
 
 
-@transactional
 async def insert_task_chat(
-    session: AsyncSession, task_id: int, request_model: TaskChatCreateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskChatCreateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,

@@ -9,7 +9,7 @@ from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
 
 from core.models.http import ResponseModel
-from core.middeleware import GlobalContextMiddleware, GlobalMonitorMiddleware
+from core.middleware import GlobalContextMiddleware, GlobalMonitorMiddleware
 from core.api.routes import api_router
 from core.api.dependencies import global_headers
 from core.utils.logger import setup_logging

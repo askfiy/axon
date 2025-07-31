@@ -79,8 +79,6 @@ class GlobalMonitorMiddleware(BaseHTTPMiddleware):
 
         request_info = self.get_request_info(request)
 
-        await self.get_request_log(request)
-
         start_time = time.perf_counter()
         request_loger = await self.get_request_log(request)
 

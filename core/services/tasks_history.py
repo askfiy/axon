@@ -1,6 +1,5 @@
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.http import (
     PageinationRequest,
@@ -15,7 +14,7 @@ from core.repository.crud import (
     TasksHistoryRepository,
 )
 
-from core.utils.decorators import transactional
+from core.api.dependencies import AsyncSession, AsyncTxSession
 
 
 async def get_histories(
@@ -29,9 +28,8 @@ async def get_histories(
     )
 
 
-@transactional
 async def insert_task_history(
-    session: AsyncSession, task_id: int, request_model: TaskHistoryCreateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskHistoryCreateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,

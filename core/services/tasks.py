@@ -1,6 +1,5 @@
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.db import Tasks
 from core.models.http import (
@@ -15,8 +14,7 @@ from core.repository.crud import (
     TasksCRUDRepository,
     TasksMetadataRepository,
 )
-
-from core.utils.decorators import transactional
+from core.api.dependencies import AsyncSession, AsyncTxSession
 
 
 async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
@@ -38,8 +36,7 @@ async def get_tasks(
     return await tasks_repo.get_tasks_pageination_response(pageination=pageination)
 
 
-@transactional
-async def delete_task_by_id(session: AsyncSession, task_id: int) -> bool:
+async def delete_task_by_id(session: AsyncTxSession, task_id: int) -> bool:
     tasks_repo = TasksCRUDRepository(session=session)
     # 我们会在 repo 层涉及到是否删除 metadata_info, 所以先将其 JOIN LOAD 出来
     task = await tasks_repo.get(
@@ -56,9 +53,8 @@ async def delete_task_by_id(session: AsyncSession, task_id: int) -> bool:
     return bool(task.is_deleted)
 
 
-@transactional
 async def create_task(
-    session: AsyncSession, request_model: TaskCreateRequestModel
+    session: AsyncTxSession, request_model: TaskCreateRequestModel
 ) -> TaskInCRUDResponse:
     task_info = request_model.model_dump(exclude={"metadata"})
 
@@ -96,9 +92,8 @@ async def create_task(
     return TaskInCRUDResponse.model_validate(task)
 
 
-@transactional
 async def update_task(
-    session: AsyncSession, task_id: int, request_model: TaskUpdateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskUpdateRequestModel
 ) -> TaskInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,

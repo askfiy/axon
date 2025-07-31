@@ -21,6 +21,7 @@ IGNORE_FILES = {
     ".gitignore",
     ".python-version",
     "alembic.ini",
+    "README.md",
 }
 
 # 输出文件名

@@ -12,7 +12,12 @@ from core.models.http import (
     TaskHistoryCreateRequestModel,
 )
 from core.services import tasks_history as tasks_history_services
-from core.api.dependencies import get_async_session, AsyncSession
+from core.api.dependencies import (
+    get_async_session,
+    get_async_tx_session,
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
 tasks_history_route = fastapi.APIRouter(
@@ -44,7 +49,7 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def insert_task_history(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
+    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskHistoryCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:

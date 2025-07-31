@@ -1,6 +1,5 @@
 import fastapi
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.http import (
     PageinationRequest,
@@ -8,13 +7,14 @@ from core.models.http import (
     TaskAuditInCRUDResponse,
     TaskAuditCreateRequestModel,
 )
-
 from core.repository.crud import (
     TasksCRUDRepository,
     TasksAuditRepository,
 )
-
-from core.utils.decorators import transactional
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+)
 
 
 async def get_audits(
@@ -28,9 +28,8 @@ async def get_audits(
     )
 
 
-@transactional
 async def insert_task_audit(
-    session: AsyncSession, task_id: int, request_model: TaskAuditCreateRequestModel
+    session: AsyncTxSession, task_id: int, request_model: TaskAuditCreateRequestModel
 ) -> TaskAuditInCRUDResponse:
     tasks_repo = TasksCRUDRepository(
         session=session,
