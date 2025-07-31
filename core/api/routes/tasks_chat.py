@@ -1,5 +1,3 @@
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -7,17 +5,10 @@ from core.models.http import (
     ResponseModel,
     PageinationRequest,
     PageinationResponse,
-    TaskInCRUDResponse,
-    TaskChatCreateRequestModel,
     TaskChatInCRUDResponse,
 )
+from core.models.services import TaskChatCreateRequestModel
 from core.services import tasks_chat as tasks_chat_services
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
 
 
 tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat"])
@@ -30,28 +21,33 @@ tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat
     response_model=PageinationResponse[TaskChatInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskChatInCRUDResponse]:
     result = await tasks_chat_services.get_chats(
-        task_id=task_id, session=session, pageination=pageination
+        task_id=task_id, pageination=pageination
     )
-    return result
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[
+            TaskChatInCRUDResponse.model_validate(chat) for chat in result.db_objects
+        ],
+    )
 
 
 @tasks_chat_route.post(
     path="",
     name="插入聊天记录",
     status_code=fastapi.status.HTTP_201_CREATED,
-    response_model=ResponseModel[TaskInCRUDResponse],
+    response_model=ResponseModel[TaskChatCreateRequestModel],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskChatCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
-) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_chat_services.insert_task_chat(
-        session=session, task_id=task_id, request_model=request_model
+) -> ResponseModel[TaskChatInCRUDResponse]:
+    result = await tasks_chat_services.create_chat(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskChatInCRUDResponse.model_validate(result))

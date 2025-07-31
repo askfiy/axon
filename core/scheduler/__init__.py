@@ -1,5 +1,3 @@
-import asyncio
-
 from .dispatch import Dispatch
 
 

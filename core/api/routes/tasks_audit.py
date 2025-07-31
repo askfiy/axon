@@ -1,5 +1,3 @@
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -8,14 +6,8 @@ from core.models.http import (
     PageinationRequest,
     PageinationResponse,
     TaskAuditInCRUDResponse,
-    TaskAuditCreateRequestModel,
 )
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
+from core.models.services import TaskAuditCreateRequestModel
 from core.services import tasks_audit as tasks_audit_services
 
 
@@ -29,14 +21,21 @@ tasks_audit_route = fastapi.APIRouter(prefix="/{task_id}/audit", tags=["Tasks-au
     response_model=PageinationResponse[TaskAuditInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskAuditInCRUDResponse]:
     result = await tasks_audit_services.get_audits(
-        task_id=task_id, session=session, pageination=pageination
+        task_id=task_id, pageination=pageination
     )
-    return result
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[
+            TaskAuditInCRUDResponse.model_validate(task_audit)
+            for task_audit in result.db_objects
+        ],
+    )
 
 
 @tasks_audit_route.post(
@@ -46,11 +45,10 @@ async def get(
     response_model=ResponseModel[TaskAuditInCRUDResponse],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskAuditCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskAuditInCRUDResponse]:
-    result = await tasks_audit_services.insert_task_audit(
-        session=session, task_id=task_id, request_model=request_model
+    task_audit = await tasks_audit_services.create_audit(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskAuditInCRUDResponse.model_validate(task_audit))

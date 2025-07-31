@@ -1,7 +1,7 @@
 import asyncio
 
 from core.globals import broker
-from core.services.tasks import get_dispatch_tasks_id, get_dispatch_task_by_id
+from core.services.tasks import get_task_by_id, get_dispatch_tasks_id
 
 
 class Dispatch:
@@ -20,7 +20,7 @@ class Dispatch:
     @classmethod
     async def consumption(cls, message: dict[str, int]):
         task_id = message["task_id"]
-        task = await get_dispatch_task_by_id(task_id)
+        task = await get_task_by_id(task_id)
         print(
             f"消费啦: {task.id} {task.name} {task.histories} {task.chats} {task.metadata_info.keywords}"
         )

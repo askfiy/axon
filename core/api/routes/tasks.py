@@ -1,5 +1,3 @@
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -9,15 +7,8 @@ from core.models.http import (
     PageinationRequest,
     PageinationResponse,
     TaskInCRUDResponse,
-    TaskCreateRequestModel,
-    TaskUpdateRequestModel,
 )
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
+from core.models.services import TaskCreateRequestModel, TaskUpdateRequestModel
 
 tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -30,12 +21,9 @@ tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 )
 async def create(
     request_model: TaskCreateRequestModel,
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.create_task(
-        session=session, request_model=request_model
-    )
-    return ResponseModel(result=result)
+    task = await tasks_services.create_task(request_model=request_model)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.get(
@@ -45,11 +33,15 @@ async def create(
     response_model=PageinationResponse[TaskInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskInCRUDResponse]:
-    result = await tasks_services.get_tasks(session=session, pageination=pageination)
-    return result
+    result = await tasks_services.get_tasks(pageination=pageination)
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[TaskInCRUDResponse.model_validate(task) for task in result.db_objects],
+    )
 
 
 @tasks_route.get(
@@ -59,11 +51,10 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def get_by_id(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.get_task_by_id(session=session, task_id=task_id)
-    return ResponseModel(result=result)
+    task = await tasks_services.get_task_by_id(task_id=task_id)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.put(
@@ -73,14 +64,13 @@ async def get_by_id(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def update(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskUpdateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.update_task(
-        session=session, task_id=task_id, request_model=request_model
+    task = await tasks_services.update_task(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.delete(
@@ -90,8 +80,7 @@ async def update(
     response_model=ResponseModel[bool],
 )
 async def delete(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[bool]:
-    result = await tasks_services.delete_task_by_id(session=session, task_id=task_id)
+    result = await tasks_services.delete_task_by_id(task_id=task_id)
     return ResponseModel(result=result)

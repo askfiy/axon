@@ -1,13 +1,10 @@
-import datetime
-
 from ..model import BaseModel
 from ..enums import TaskState, TaskAuditSource
 
 
-class TaskAuditInCRUDResponse(BaseModel):
+class TaskAuditCreateRequestModel(BaseModel):
     from_state: TaskState
     to_state: TaskState
     source: TaskAuditSource
     source_context: str
     comment: str
-    created_at: datetime.datetime

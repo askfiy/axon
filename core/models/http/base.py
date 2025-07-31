@@ -1,33 +1,15 @@
 import re
-import datetime
-from typing import Generic, TypeVar, Literal
+from typing import Generic, Literal
 
 
 import pydantic
-from pydantic import BaseModel, Field, computed_field
-from pydantic.alias_generators import to_camel, to_snake
+from pydantic import Field, computed_field
+from pydantic.alias_generators import to_snake
+
+from ..model import BaseModel, T
 
 
-T = TypeVar("T")
-
-
-model_config = pydantic.ConfigDict(
-    # 自动将 snake_case 字段名生成 camelCase 别名，用于 JSON 输出
-    alias_generator=to_camel,
-    # 允许在创建模型时使用别名（如 'taskId'）
-    populate_by_name=True,
-    # 允许从 ORM 对象等直接转换
-    from_attributes=True,
-    # 统一处理所有 datetime 对象的 JSON 序列化格式
-    json_encoders={datetime.datetime: lambda dt: dt.isoformat().replace("+00:00", "Z")},
-)
-
-
-class BaseHttpModel(BaseModel):
-    model_config = model_config
-
-
-class BaseHttpResponseModel(BaseHttpModel, Generic[T]):
+class BaseHttpResponseModel(BaseModel, Generic[T]):
     """
     为 Axon API 设计的、标准化的泛型响应模型。
     """
@@ -41,7 +23,7 @@ class ResponseModel(BaseHttpResponseModel[T]):
     result: T | None = Field(default=None, description="响应体负载")
 
 
-class PageinationRequest(BaseHttpModel):
+class PageinationRequest(BaseModel):
     """
     分页器请求对象
     """

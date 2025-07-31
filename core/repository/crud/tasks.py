@@ -10,7 +10,8 @@ from sqlalchemy.orm.util import LoaderCriteriaOption
 
 from core.models.enums import TaskState
 from core.models.db import Tasks, TasksChat, TasksHistory
-from core.models.http import PageinationRequest, PageinationResponse, TaskInCRUDResponse
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
 from core.repository.crud.tasks_metadata import TasksMetadataRepository
 
@@ -184,7 +185,7 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get_tasks_pageination_response(
         self,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskInCRUDResponse]:
+    ) -> PageinationInfo[Tasks]:
         query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
         query_stmt = query_stmt.options(
             *self._get_chat_loader_options(self.default_limit_count)
@@ -196,7 +197,6 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskInCRUDResponse,
         )
 
     # ------- 内部调用

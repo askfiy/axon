@@ -42,7 +42,7 @@ content-type: application/json
   "objective": "Current task expect execution finish.",
   "details": "Task from user 001.",
   "dependencies": [],
-  "parent_id": 2
+  "parent_id": 1
 }
 
 ### 获取任务
@@ -58,7 +58,7 @@ DELETE http://{{host}}/tasks/2
 
 ### 更新任务(带 metadata 数据)
 
-PUT http://{{host}}/tasks/2
+PUT http://{{host}}/tasks/1
 content-type: application/json
 
 {
@@ -85,7 +85,7 @@ content-type: application/json
 
 
 ### 更新任务(不带 metadata 数据)
-PUT http://{{host}}/tasks/2
+PUT http://{{host}}/tasks/1
 content-type: application/json
 
 {
@@ -103,7 +103,7 @@ content-type: application/json
 }
 
 ### 为任务插入聊天记录
-POST http://{{host}}/tasks/2/chat
+POST http://{{host}}/tasks/1/chat
 content-type: application/json
 
 {
@@ -133,4 +133,4 @@ content-type: application/json
 
 
 ### 获取单个任务
-GET http://{{host}}/tasks/1
+GET http://{{host}}/tasks/2

@@ -1,12 +1,9 @@
 import sqlalchemy as sa
 
 from core.models.db import TasksChat
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskChatInCRUDResponse,
-)
 
 
 class TasksChatRepository(BaseCRUDRepository[TasksChat]):
@@ -14,7 +11,7 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
         self,
         task_id: int,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskChatInCRUDResponse]:
+    ) -> PageinationInfo[TasksChat]:
         query_stmt = sa.select(self.model).where(
             self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
@@ -22,5 +19,4 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskChatInCRUDResponse,
         )

@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Generic, TypeVar, Type, Literal
+from typing import Any, Generic, TypeVar
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -8,10 +8,10 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.db import BaseTableModel
-from core.models.http import BaseHttpModel, PageinationRequest, PageinationResponse
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 
 ModelType = TypeVar("ModelType", bound=BaseTableModel)
-ModelInCRUDResponse = TypeVar("ModelInCRUDResponse", bound=BaseHttpModel)
 
 
 class BaseCRUDRepository(Generic[ModelType]):
@@ -21,7 +21,7 @@ class BaseCRUDRepository(Generic[ModelType]):
 
     def __init__(self, session: AsyncSession):
         self.session = session
-        self.model: type[ModelType] = typing.get_args(self.__class__.__orig_bases__[0])[
+        self.model: type[ModelType] = typing.get_args(self.__class__.__orig_bases__[0])[  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             0
         ]
 
@@ -93,9 +93,8 @@ class BaseCRUDRepository(Generic[ModelType]):
     async def get_pageination_response(
         self,
         pageination_request: PageinationRequest,
-        response_model_cls: Type[ModelInCRUDResponse],
         joined_loads: list[InstrumentedAttribute[Any]] | None = None,
-    ) -> PageinationResponse[ModelInCRUDResponse]:
+    ) -> PageinationInfo[ModelType]:
         """
         返回默认的分页对象
         """
@@ -108,15 +107,13 @@ class BaseCRUDRepository(Generic[ModelType]):
         return await self.get_pageination_response_by_stmt(
             pageination_request=pageination_request,
             stmt=stmt,
-            response_model_cls=response_model_cls,
         )
 
     async def get_pageination_response_by_stmt(
         self,
         pageination_request: PageinationRequest,
         stmt: sa.Select[Any],
-        response_model_cls: Type[ModelInCRUDResponse],
-    ) -> PageinationResponse[ModelInCRUDResponse]:
+    ) -> PageinationInfo[ModelType]:
         """
         执行 stmt 语句. 并将结果返回为分页对象.
         """
@@ -141,19 +138,10 @@ class BaseCRUDRepository(Generic[ModelType]):
         # 应用分页逻辑
         paginated_stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
-        # 执行查询并获取 ORM 模型的列表
-        orm_models = (
-            (await self.session.execute(paginated_stmt)).scalars().unique().all()
-        )
-
-        # 将 ORM 模型列表转换为 Pydantic 响应模型列表
-        paginated_response_items = [
-            response_model_cls.model_validate(model) for model in orm_models
-        ]
-
-        return PageinationResponse(
+        result = await self.session.execute(paginated_stmt)
+        return PageinationInfo(
             current_page=page,
             current_size=page_size,
             total_counts=total_items,
-            result=paginated_response_items,
+            db_objects=result.scalars().unique().all(),
         )

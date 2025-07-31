@@ -45,7 +45,6 @@ class BaseTableModel(DeclarativeBase):
         comment="0：未删除 1：已删除",
     )
 
-
     @classmethod
     def __table_cls__(
         cls, table_name: str, metadata: sa.MetaData, *args: Any, **kwargs: Any

@@ -42,3 +42,6 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid redis_url DSN: {e}") from e
 
         return str(redis_url)
+
+
+env_helper = Settings()  # pyright: ignore[reportCallIssue]

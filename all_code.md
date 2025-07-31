@@ -1,4 +1,11 @@
-## `/Users/askfiy/project/coding/axon/core/api/dependencies.py`
+
+## `/home/askfiy/Code/axon/all_code.md`
+
+```markdown
+
+```
+
+## `/home/askfiy/Code/axon/core/api/dependencies.py`
 
 ```python
 from fastapi import Header
@@ -6,8 +13,6 @@ from fastapi import Header
 from core.database.connection import (
     get_async_session,
     get_async_tx_session,
-    get_async_session_direct,
-    get_async_tx_session_direct,
     AsyncSession,
     AsyncTxSession,
 )
@@ -26,8 +31,6 @@ async def global_headers(
 __all__ = [
     "get_async_session",
     "get_async_tx_session",
-    "get_async_session_direct",
-    "get_async_tx_session_direct",
     "AsyncSession",
     "AsyncTxSession",
     "global_headers",
@@ -35,7 +38,7 @@ __all__ = [
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/api/routes/__init__.py`
+## `/home/askfiy/Code/axon/core/api/routes/__init__.py`
 
 ```python
 import fastapi
@@ -57,11 +60,9 @@ api_router.include_router(tasks_route)
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/api/routes/tasks.py`
+## `/home/askfiy/Code/axon/core/api/routes/tasks.py`
 
 ```python
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -71,15 +72,8 @@ from core.models.http import (
     PageinationRequest,
     PageinationResponse,
     TaskInCRUDResponse,
-    TaskCreateRequestModel,
-    TaskUpdateRequestModel,
 )
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
+from core.models.services import TaskCreateRequestModel, TaskUpdateRequestModel
 
 tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -92,12 +86,9 @@ tasks_route = fastapi.APIRouter(prefix="/tasks", tags=["Tasks"])
 )
 async def create(
     request_model: TaskCreateRequestModel,
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.create_task(
-        session=session, request_model=request_model
-    )
-    return ResponseModel(result=result)
+    task = await tasks_services.create_task(request_model=request_model)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.get(
@@ -107,11 +98,15 @@ async def create(
     response_model=PageinationResponse[TaskInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskInCRUDResponse]:
-    result = await tasks_services.get_tasks(session=session, pageination=pageination)
-    return result
+    result = await tasks_services.get_tasks(pageination=pageination)
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[TaskInCRUDResponse.model_validate(task) for task in result.db_objects],
+    )
 
 
 @tasks_route.get(
@@ -121,11 +116,10 @@ async def get(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def get_by_id(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.get_task_by_id(session=session, task_id=task_id)
-    return ResponseModel(result=result)
+    task = await tasks_services.get_task_by_id(task_id=task_id)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.put(
@@ -135,14 +129,13 @@ async def get_by_id(
     response_model=ResponseModel[TaskInCRUDResponse],
 )
 async def update(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskUpdateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_services.update_task(
-        session=session, task_id=task_id, request_model=request_model
+    task = await tasks_services.update_task(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskInCRUDResponse.model_validate(task))
 
 
 @tasks_route.delete(
@@ -152,19 +145,16 @@ async def update(
     response_model=ResponseModel[bool],
 )
 async def delete(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[bool]:
-    result = await tasks_services.delete_task_by_id(session=session, task_id=task_id)
+    result = await tasks_services.delete_task_by_id(task_id=task_id)
     return ResponseModel(result=result)
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_audit.py`
+## `/home/askfiy/Code/axon/core/api/routes/tasks_audit.py`
 
 ```python
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -173,14 +163,8 @@ from core.models.http import (
     PageinationRequest,
     PageinationResponse,
     TaskAuditInCRUDResponse,
-    TaskAuditCreateRequestModel,
 )
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
+from core.models.services import TaskAuditCreateRequestModel
 from core.services import tasks_audit as tasks_audit_services
 
 
@@ -194,14 +178,21 @@ tasks_audit_route = fastapi.APIRouter(prefix="/{task_id}/audit", tags=["Tasks-au
     response_model=PageinationResponse[TaskAuditInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskAuditInCRUDResponse]:
     result = await tasks_audit_services.get_audits(
-        task_id=task_id, session=session, pageination=pageination
+        task_id=task_id, pageination=pageination
     )
-    return result
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[
+            TaskAuditInCRUDResponse.model_validate(task_audit)
+            for task_audit in result.db_objects
+        ],
+    )
 
 
 @tasks_audit_route.post(
@@ -211,22 +202,19 @@ async def get(
     response_model=ResponseModel[TaskAuditInCRUDResponse],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskAuditCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
 ) -> ResponseModel[TaskAuditInCRUDResponse]:
-    result = await tasks_audit_services.insert_task_audit(
-        session=session, task_id=task_id, request_model=request_model
+    task_audit = await tasks_audit_services.create_audit(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskAuditInCRUDResponse.model_validate(task_audit))
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_chat.py`
+## `/home/askfiy/Code/axon/core/api/routes/tasks_chat.py`
 
 ```python
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -234,17 +222,10 @@ from core.models.http import (
     ResponseModel,
     PageinationRequest,
     PageinationResponse,
-    TaskInCRUDResponse,
-    TaskChatCreateRequestModel,
     TaskChatInCRUDResponse,
 )
+from core.models.services import TaskChatCreateRequestModel
 from core.services import tasks_chat as tasks_chat_services
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
-    get_async_session,
-    get_async_tx_session,
-)
 
 
 tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat"])
@@ -257,39 +238,42 @@ tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat
     response_model=PageinationResponse[TaskChatInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskChatInCRUDResponse]:
     result = await tasks_chat_services.get_chats(
-        task_id=task_id, session=session, pageination=pageination
+        task_id=task_id, pageination=pageination
     )
-    return result
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[
+            TaskChatInCRUDResponse.model_validate(chat) for chat in result.db_objects
+        ],
+    )
 
 
 @tasks_chat_route.post(
     path="",
     name="插入聊天记录",
     status_code=fastapi.status.HTTP_201_CREATED,
-    response_model=ResponseModel[TaskInCRUDResponse],
+    response_model=ResponseModel[TaskChatCreateRequestModel],
 )
 async def insert_task_chat(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskChatCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
-) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_chat_services.insert_task_chat(
-        session=session, task_id=task_id, request_model=request_model
+) -> ResponseModel[TaskChatInCRUDResponse]:
+    result = await tasks_chat_services.create_chat(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskChatInCRUDResponse.model_validate(result))
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/api/routes/tasks_history.py`
+## `/home/askfiy/Code/axon/core/api/routes/tasks_history.py`
 
 ```python
-from typing import Annotated
-
 import fastapi
 from fastapi import Depends
 
@@ -297,17 +281,10 @@ from core.models.http import (
     ResponseModel,
     PageinationRequest,
     PageinationResponse,
-    TaskInCRUDResponse,
     TaskHistoryInCRUDResponse,
-    TaskHistoryCreateRequestModel,
 )
+from core.models.services import TaskHistoryCreateRequestModel
 from core.services import tasks_history as tasks_history_services
-from core.api.dependencies import (
-    get_async_session,
-    get_async_tx_session,
-    AsyncSession,
-    AsyncTxSession,
-)
 
 
 tasks_history_route = fastapi.APIRouter(
@@ -322,35 +299,41 @@ tasks_history_route = fastapi.APIRouter(
     response_model=PageinationResponse[TaskHistoryInCRUDResponse],
 )
 async def get(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
     task_id: int = fastapi.Path(description="任务 ID"),
     pageination: PageinationRequest = Depends(PageinationRequest),
 ) -> PageinationResponse[TaskHistoryInCRUDResponse]:
     result = await tasks_history_services.get_histories(
-        task_id=task_id, session=session, pageination=pageination
+        task_id=task_id, pageination=pageination
     )
-    return result
+    return PageinationResponse(
+        **result.model_dump(
+            exclude={"db_objects"},
+        ),
+        result=[
+            TaskHistoryInCRUDResponse.model_validate(history)
+            for history in result.db_objects
+        ],
+    )
 
 
 @tasks_history_route.post(
     path="",
     name="插入执行记录",
     status_code=fastapi.status.HTTP_201_CREATED,
-    response_model=ResponseModel[TaskInCRUDResponse],
+    response_model=ResponseModel[TaskHistoryInCRUDResponse],
 )
 async def insert_task_history(
-    session: Annotated[AsyncTxSession, Depends(get_async_tx_session)],
     request_model: TaskHistoryCreateRequestModel,
     task_id: int = fastapi.Path(description="任务 ID"),
-) -> ResponseModel[TaskInCRUDResponse]:
-    result = await tasks_history_services.insert_task_history(
-        session=session, task_id=task_id, request_model=request_model
+) -> ResponseModel[TaskHistoryInCRUDResponse]:
+    history = await tasks_history_services.create_history(
+        task_id=task_id, request_model=request_model
     )
-    return ResponseModel(result=result)
+    return ResponseModel(result=TaskHistoryInCRUDResponse.model_validate(history))
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/components/__init__.py`
+## `/home/askfiy/Code/axon/core/components/__init__.py`
 
 ```python
 from .cache import RCache
@@ -360,7 +343,7 @@ __all__ = ["RCache", "RBroker"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/components/broker.py`
+## `/home/askfiy/Code/axon/core/components/broker.py`
 
 ```python
 import logging
@@ -531,7 +514,7 @@ class RBroker:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/components/cache.py`
+## `/home/askfiy/Code/axon/core/components/cache.py`
 
 ```python
 import json
@@ -588,16 +571,7 @@ class RCache:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/config/__init__.py`
-
-```python
-from .settings import Settings
-
-env_helper = Settings()  # pyright: ignore[reportCallIssue]
-
-```
-
-## `/Users/askfiy/project/coding/axon/core/config/settings.py`
+## `/home/askfiy/Code/axon/core/config.py`
 
 ```python
 import os
@@ -645,9 +619,12 @@ class Settings(BaseSettings):
 
         return str(redis_url)
 
+
+env_helper = Settings()  # pyright: ignore[reportCallIssue]
+
 ```
 
-## `/Users/askfiy/project/coding/axon/core/context/__init__.py`
+## `/home/askfiy/Code/axon/core/context.py`
 
 ```python
 from core.middleware.context import g
@@ -656,13 +633,13 @@ __all__ = ["g"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/database/__init__.py`
+## `/home/askfiy/Code/axon/core/database/__init__.py`
 
 ```python
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/database/connection.py`
+## `/home/askfiy/Code/axon/core/database/connection.py`
 
 ```python
 from typing import TypeAlias
@@ -734,7 +711,29 @@ __all__ = [
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/globals/__init__.py`
+## `/home/askfiy/Code/axon/core/exceptions.py`
+
+```python
+class ServiceException(Exception):
+    """服务层异常"""
+
+    pass
+
+
+class ServiceNotFoundException(ServiceException):
+    """未找到记录"""
+
+    pass
+
+
+class ServiceMissMessageException(ServiceException):
+    """缺少信息"""
+
+    pass
+
+```
+
+## `/home/askfiy/Code/axon/core/globals/__init__.py`
 
 ```python
 from core.database.connection import get_redis_client
@@ -749,7 +748,7 @@ __all__ = ["broker", "cache"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/middleware/__init__.py`
+## `/home/askfiy/Code/axon/core/middleware/__init__.py`
 
 ```python
 from .context import GlobalContextMiddleware
@@ -759,7 +758,7 @@ __all__ = ["GlobalContextMiddleware", "GlobalMonitorMiddleware"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/middleware/context.py`
+## `/home/askfiy/Code/axon/core/middleware/context.py`
 
 ```python
 """
@@ -813,7 +812,7 @@ g = Globals()
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/middleware/monitor.py`
+## `/home/askfiy/Code/axon/core/middleware/monitor.py`
 
 ```python
 import time
@@ -922,13 +921,13 @@ class GlobalMonitorMiddleware(BaseHTTPMiddleware):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/__init__.py`
+## `/home/askfiy/Code/axon/core/models/__init__.py`
 
 ```python
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/__init__.py`
+## `/home/askfiy/Code/axon/core/models/db/__init__.py`
 
 ```python
 from .base import BaseTableModel
@@ -949,7 +948,7 @@ __all__ = [
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/base.py`
+## `/home/askfiy/Code/axon/core/models/db/base.py`
 
 ```python
 from typing import Any
@@ -999,7 +998,6 @@ class BaseTableModel(DeclarativeBase):
         comment="0：未删除 1：已删除",
     )
 
-
     @classmethod
     def __table_cls__(
         cls, table_name: str, metadata: sa.MetaData, *args: Any, **kwargs: Any
@@ -1040,7 +1038,7 @@ def set_deleted_at_on_soft_delete(
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/tasks.py`
+## `/home/askfiy/Code/axon/core/models/db/tasks.py`
 
 ```python
 import uuid
@@ -1177,7 +1175,7 @@ class Tasks(BaseTableModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/tasks_audit.py`
+## `/home/askfiy/Code/axon/core/models/db/tasks_audit.py`
 
 ```python
 import sqlalchemy as sa
@@ -1238,7 +1236,7 @@ class TasksAudit(BaseTableModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/tasks_chat.py`
+## `/home/askfiy/Code/axon/core/models/db/tasks_chat.py`
 
 ```python
 import typing
@@ -1283,7 +1281,7 @@ class TasksChat(BaseTableModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/tasks_history.py`
+## `/home/askfiy/Code/axon/core/models/db/tasks_history.py`
 
 ```python
 import typing
@@ -1335,7 +1333,7 @@ class TasksHistory(BaseTableModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/db/tasks_metadata.py`
+## `/home/askfiy/Code/axon/core/models/db/tasks_metadata.py`
 
 ```python
 from typing import TYPE_CHECKING
@@ -1389,7 +1387,7 @@ class TasksMetadata(BaseTableModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/enums.py`
+## `/home/askfiy/Code/axon/core/models/enums.py`
 
 ```python
 from enum import StrEnum
@@ -1438,66 +1436,46 @@ class TaskAuditSource(StrEnum):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/__init__.py`
+## `/home/askfiy/Code/axon/core/models/http/__init__.py`
 
 ```python
-from .base import BaseHttpModel, ResponseModel, PageinationRequest, PageinationResponse
-from .tasks import TaskInCRUDResponse, TaskCreateRequestModel, TaskUpdateRequestModel
-from .tasks_chat import TaskChatInCRUDResponse, TaskChatCreateRequestModel
-from .tasks_audit import TaskAuditInCRUDResponse, TaskAuditCreateRequestModel
-from .tasks_history import TaskHistoryInCRUDResponse, TaskHistoryCreateRequestModel
+from .base import (
+    ResponseModel,
+    PageinationRequest,
+    PageinationResponse,
+)
+from .tasks import TaskInCRUDResponse
+from .tasks_chat import TaskChatInCRUDResponse
+from .tasks_audit import TaskAuditInCRUDResponse
+from .tasks_history import TaskHistoryInCRUDResponse
 
 __all__ = [
-    "BaseHttpModel",
     "ResponseModel",
     "PageinationRequest",
     "PageinationResponse",
     "TaskInCRUDResponse",
-    "TaskCreateRequestModel",
-    "TaskUpdateRequestModel",
-    "TaskAuditInCRUDResponse",
-    "TaskAuditCreateRequestModel",
     "TaskChatInCRUDResponse",
-    "TaskChatCreateRequestModel",
+    "TaskAuditInCRUDResponse",
     "TaskHistoryInCRUDResponse",
-    "TaskHistoryCreateRequestModel",
 ]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/base.py`
+## `/home/askfiy/Code/axon/core/models/http/base.py`
 
 ```python
 import re
-import datetime
-from typing import Generic, TypeVar, Literal
+from typing import Generic, Literal
 
 
 import pydantic
-from pydantic import BaseModel, Field, computed_field
-from pydantic.alias_generators import to_camel, to_snake
+from pydantic import Field, computed_field
+from pydantic.alias_generators import to_snake
+
+from ..model import BaseModel, T
 
 
-T = TypeVar("T")
-
-
-model_config = pydantic.ConfigDict(
-    # 自动将 snake_case 字段名生成 camelCase 别名，用于 JSON 输出
-    alias_generator=to_camel,
-    # 允许在创建模型时使用别名（如 'taskId'）
-    populate_by_name=True,
-    # 允许从 ORM 对象等直接转换
-    from_attributes=True,
-    # 统一处理所有 datetime 对象的 JSON 序列化格式
-    json_encoders={datetime.datetime: lambda dt: dt.isoformat().replace("+00:00", "Z")},
-)
-
-
-class BaseHttpModel(BaseModel):
-    model_config = model_config
-
-
-class BaseHttpResponseModel(BaseHttpModel, Generic[T]):
+class BaseHttpResponseModel(BaseModel, Generic[T]):
     """
     为 Axon API 设计的、标准化的泛型响应模型。
     """
@@ -1511,7 +1489,7 @@ class ResponseModel(BaseHttpResponseModel[T]):
     result: T | None = Field(default=None, description="响应体负载")
 
 
-class PageinationRequest(BaseHttpModel):
+class PageinationRequest(BaseModel):
     """
     分页器请求对象
     """
@@ -1568,7 +1546,7 @@ class PageinationResponse(BaseHttpResponseModel[T]):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/tasks.py`
+## `/home/askfiy/Code/axon/core/models/http/tasks.py`
 
 ```python
 import datetime
@@ -1576,14 +1554,13 @@ import datetime
 from pydantic import field_validator
 
 
-from core.models.enums import TaskState
-from core.models.http.base import BaseHttpModel
-from core.models.http.tasks_chat import TaskChatInCRUDResponse
-from core.models.http.tasks_history import TaskHistoryInCRUDResponse
-from core.models.http.tasks_metadata import TaskMetaDataRequestModel
+from ..enums import TaskState
+from ..model import BaseModel
+from .tasks_chat import TaskChatInCRUDResponse
+from .tasks_history import TaskHistoryInCRUDResponse
 
 
-class TaskInCRUDResponse(BaseHttpModel):
+class TaskInCRUDResponse(BaseModel):
     id: int
     state: TaskState
 
@@ -1629,8 +1606,164 @@ class TaskInCRUDResponse(BaseHttpModel):
             return utc_aware_time
         return v
 
+```
 
-class TaskCreateRequestModel(BaseHttpModel):
+## `/home/askfiy/Code/axon/core/models/http/tasks_audit.py`
+
+```python
+import datetime
+
+from ..model import BaseModel
+from ..enums import TaskState, TaskAuditSource
+
+
+class TaskAuditInCRUDResponse(BaseModel):
+    from_state: TaskState
+    to_state: TaskState
+    source: TaskAuditSource
+    source_context: str
+    comment: str
+    created_at: datetime.datetime
+
+```
+
+## `/home/askfiy/Code/axon/core/models/http/tasks_chat.py`
+
+```python
+import datetime
+
+from ..model import BaseModel
+from ..enums import MessageRole
+
+
+class TaskChatInCRUDResponse(BaseModel):
+    message: str
+    role: MessageRole
+    created_at: datetime.datetime
+
+```
+
+## `/home/askfiy/Code/axon/core/models/http/tasks_history.py`
+
+```python
+import datetime
+
+from ..enums import TaskState
+from ..model import BaseModel
+
+
+class TaskHistoryInCRUDResponse(BaseModel):
+    state: TaskState
+    process: str
+    thinking: str
+    created_at: datetime.datetime
+
+```
+
+## `/home/askfiy/Code/axon/core/models/model.py`
+
+```python
+import datetime
+from typing import TypeVar
+
+import pydantic
+from pydantic.alias_generators import to_camel
+
+
+T = TypeVar("T")
+
+model_config = pydantic.ConfigDict(
+    # 自动将 snake_case 字段名生成 camelCase 别名，用于 JSON 输出
+    alias_generator=to_camel,
+    # 允许在创建模型时使用别名（如 'taskId'）
+    populate_by_name=True,
+    # 允许从 ORM 对象等直接转换
+    from_attributes=True,
+    # 允许任意类型作为字段
+    arbitrary_types_allowed=True,
+    # 统一处理所有 datetime 对象的 JSON 序列化格式
+    json_encoders={datetime.datetime: lambda dt: dt.isoformat().replace("+00:00", "Z")},
+)
+
+
+class BaseModel(pydantic.BaseModel):
+    model_config = model_config
+
+
+__all__ = ["BaseModel", "T"]
+
+```
+
+## `/home/askfiy/Code/axon/core/models/scheduler/__init__.py`
+
+```python
+
+```
+
+## `/home/askfiy/Code/axon/core/models/scheduler/tasks.py`
+
+```python
+
+```
+
+## `/home/askfiy/Code/axon/core/models/services/__init__.py`
+
+```python
+from .base import PageinationInfo
+from .tasks import TaskCreateRequestModel, TaskUpdateRequestModel
+from .tasks_chat import TaskChatCreateRequestModel
+from .tasks_audit import TaskAuditCreateRequestModel
+from .tasks_metadata import TaskMetaDataRequestModel
+from .tasks_history import TaskHistoryCreateRequestModel
+
+__all__ = [
+    "PageinationInfo",
+    "TaskCreateRequestModel",
+    "TaskUpdateRequestModel",
+    "TaskChatCreateRequestModel",
+    "TaskAuditCreateRequestModel",
+    "TaskMetaDataRequestModel",
+    "TaskHistoryCreateRequestModel",
+]
+
+```
+
+## `/home/askfiy/Code/axon/core/models/services/base.py`
+
+```python
+from typing import Generic
+
+from collections.abc import Sequence
+from pydantic import Field
+
+from ..model import BaseModel, T
+
+
+class PageinationInfo(BaseModel, Generic[T]):
+    """
+    分页响应信息
+    """
+
+    current_page: int = Field(description="当前页")
+    current_size: int = Field(description="当前数")
+    total_counts: int = Field(description="总记录数")
+    db_objects: Sequence[T] = Field(
+        default_factory=Sequence, description="所有记录对象"
+    )
+
+```
+
+## `/home/askfiy/Code/axon/core/models/services/tasks.py`
+
+```python
+import datetime
+
+from ..model import BaseModel
+from ..enums import TaskState
+from .tasks_metadata import TaskMetaDataRequestModel
+
+
+class TaskCreateRequestModel(BaseModel):
     name: str
     expect_execute_time: datetime.datetime
     background: str
@@ -1642,7 +1775,7 @@ class TaskCreateRequestModel(BaseHttpModel):
     metadata: TaskMetaDataRequestModel | None = None
 
 
-class TaskUpdateRequestModel(BaseHttpModel):
+class TaskUpdateRequestModel(BaseModel):
     name: str | None = None
     state: TaskState | None = None
     priority: int | None = None
@@ -1659,25 +1792,14 @@ class TaskUpdateRequestModel(BaseHttpModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/tasks_audit.py`
+## `/home/askfiy/Code/axon/core/models/services/tasks_audit.py`
 
 ```python
-import datetime
-
-from core.models.enums import TaskState, TaskAuditSource
-from core.models.http.base import BaseHttpModel
+from ..model import BaseModel
+from ..enums import TaskState, TaskAuditSource
 
 
-class TaskAuditInCRUDResponse(BaseHttpModel):
-    from_state: TaskState
-    to_state: TaskState
-    source: TaskAuditSource
-    source_context: str
-    comment: str
-    created_at: datetime.datetime
-
-
-class TaskAuditCreateRequestModel(BaseHttpModel):
+class TaskAuditCreateRequestModel(BaseModel):
     from_state: TaskState
     to_state: TaskState
     source: TaskAuditSource
@@ -1686,62 +1808,45 @@ class TaskAuditCreateRequestModel(BaseHttpModel):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/tasks_chat.py`
+## `/home/askfiy/Code/axon/core/models/services/tasks_chat.py`
 
 ```python
-import datetime
-
-from core.models.enums import MessageRole
-from core.models.http.base import BaseHttpModel
+from ..model import BaseModel
+from ..enums import MessageRole
 
 
-class TaskChatInCRUDResponse(BaseHttpModel):
-    message: str
-    role: MessageRole
-    created_at: datetime.datetime
-
-
-class TaskChatCreateRequestModel(BaseHttpModel):
+class TaskChatCreateRequestModel(BaseModel):
     message: str
     role: MessageRole
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/tasks_history.py`
+## `/home/askfiy/Code/axon/core/models/services/tasks_history.py`
 
 ```python
-import datetime
-
-from core.models.enums import TaskState
-from core.models.http.base import BaseHttpModel
+from ..enums import TaskState
+from ..model import BaseModel
 
 
-class TaskHistoryInCRUDResponse(BaseHttpModel):
-    state: TaskState
-    process: str
-    thinking: str
-    created_at: datetime.datetime
-
-
-class TaskHistoryCreateRequestModel(BaseHttpModel):
+class TaskHistoryCreateRequestModel(BaseModel):
     state: TaskState
     process: str
     thinking: str
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/http/tasks_metadata.py`
+## `/home/askfiy/Code/axon/core/models/services/tasks_metadata.py`
 
 ```python
 from pydantic import field_serializer
 
-from core.models.http.base import BaseHttpModel
+from ..model import BaseModel
 
 
 # Tips: 我们的 keywords 入站规则是 list[str]. 但是 db 中是 str.
 # 若要返回给外部。 则需要保持设计的一致性将其反序列化为 list[str].
 # 目前 meta_info 不会出站. 故暂时搁置.
-class TaskMetaDataRequestModel(BaseHttpModel):
+class TaskMetaDataRequestModel(BaseModel):
     owner: str
     owner_timezone: str
     keywords: list[str]
@@ -1754,33 +1859,9 @@ class TaskMetaDataRequestModel(BaseHttpModel):
     def _validator_keywords(self, keywords: list[str]) -> str:
         return ",".join(keywords)
 
-
-class TaskMetaDataResponseModel:
-    pass
-
 ```
 
-## `/Users/askfiy/project/coding/axon/core/models/scheduler/__init__.py`
-
-```python
-from .tasks import int
-
-__all__ = ["int"]
-
-```
-
-## `/Users/askfiy/project/coding/axon/core/models/scheduler/tasks.py`
-
-```python
-from core.models.http.tasks import TaskInCRUDResponse
-
-
-class int(TaskInCRUDResponse):
-    pass
-
-```
-
-## `/Users/askfiy/project/coding/axon/core/repository/crud/__init__.py`
+## `/home/askfiy/Code/axon/core/repository/crud/__init__.py`
 
 ```python
 from .tasks import TasksCRUDRepository
@@ -1799,11 +1880,11 @@ __all__ = [
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/base.py`
+## `/home/askfiy/Code/axon/core/repository/crud/base.py`
 
 ```python
 import typing
-from typing import Any, Generic, TypeVar, Type, Literal
+from typing import Any, Generic, TypeVar
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -1812,10 +1893,10 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.db import BaseTableModel
-from core.models.http import BaseHttpModel, PageinationRequest, PageinationResponse
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 
 ModelType = TypeVar("ModelType", bound=BaseTableModel)
-ModelInCRUDResponse = TypeVar("ModelInCRUDResponse", bound=BaseHttpModel)
 
 
 class BaseCRUDRepository(Generic[ModelType]):
@@ -1825,7 +1906,7 @@ class BaseCRUDRepository(Generic[ModelType]):
 
     def __init__(self, session: AsyncSession):
         self.session = session
-        self.model: type[ModelType] = typing.get_args(self.__class__.__orig_bases__[0])[
+        self.model: type[ModelType] = typing.get_args(self.__class__.__orig_bases__[0])[  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             0
         ]
 
@@ -1897,9 +1978,8 @@ class BaseCRUDRepository(Generic[ModelType]):
     async def get_pageination_response(
         self,
         pageination_request: PageinationRequest,
-        response_model_cls: Type[ModelInCRUDResponse],
         joined_loads: list[InstrumentedAttribute[Any]] | None = None,
-    ) -> PageinationResponse[ModelInCRUDResponse]:
+    ) -> PageinationInfo[ModelType]:
         """
         返回默认的分页对象
         """
@@ -1912,15 +1992,13 @@ class BaseCRUDRepository(Generic[ModelType]):
         return await self.get_pageination_response_by_stmt(
             pageination_request=pageination_request,
             stmt=stmt,
-            response_model_cls=response_model_cls,
         )
 
     async def get_pageination_response_by_stmt(
         self,
         pageination_request: PageinationRequest,
         stmt: sa.Select[Any],
-        response_model_cls: Type[ModelInCRUDResponse],
-    ) -> PageinationResponse[ModelInCRUDResponse]:
+    ) -> PageinationInfo[ModelType]:
         """
         执行 stmt 语句. 并将结果返回为分页对象.
         """
@@ -1945,26 +2023,17 @@ class BaseCRUDRepository(Generic[ModelType]):
         # 应用分页逻辑
         paginated_stmt = stmt.offset((page - 1) * page_size).limit(page_size)
 
-        # 执行查询并获取 ORM 模型的列表
-        orm_models = (
-            (await self.session.execute(paginated_stmt)).scalars().unique().all()
-        )
-
-        # 将 ORM 模型列表转换为 Pydantic 响应模型列表
-        paginated_response_items = [
-            response_model_cls.model_validate(model) for model in orm_models
-        ]
-
-        return PageinationResponse(
+        result = await self.session.execute(paginated_stmt)
+        return PageinationInfo(
             current_page=page,
             current_size=page_size,
             total_counts=total_items,
-            result=paginated_response_items,
+            db_objects=result.scalars().unique().all(),
         )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks.py`
+## `/home/askfiy/Code/axon/core/repository/crud/tasks.py`
 
 ```python
 from typing import override, Any
@@ -1979,7 +2048,8 @@ from sqlalchemy.orm.util import LoaderCriteriaOption
 
 from core.models.enums import TaskState
 from core.models.db import Tasks, TasksChat, TasksHistory
-from core.models.http import PageinationRequest, PageinationResponse, TaskInCRUDResponse
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
 from core.repository.crud.tasks_metadata import TasksMetadataRepository
 
@@ -2063,15 +2133,15 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get(
         self, pk: int, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Tasks | None:
-        self.default_joined_loads.extend(joined_loads or [])
-        joined_loads = self.default_joined_loads
+        extend_joined_loads = self.default_joined_loads.copy()
+        extend_joined_loads.extend(joined_loads or [])
 
         stmt = sa.select(self.model).where(
             self.model.id == pk, sa.not_(self.model.is_deleted)
         )
 
-        if joined_loads:
-            for join_field in joined_loads:
+        if extend_joined_loads:
+            for join_field in extend_joined_loads:
                 if Tasks.chats is join_field:
                     stmt = stmt.options(
                         *self._get_chat_loader_options(self.default_limit_count)
@@ -2091,9 +2161,10 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get_all(
         self, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Sequence[Tasks]:
-        return await super().get_all(
-            joined_loads=joined_loads or self.default_joined_loads
-        )
+        extend_joined_loads = self.default_joined_loads.copy()
+        extend_joined_loads.extend(joined_loads or [])
+
+        return await super().get_all(joined_loads=extend_joined_loads)
 
     @override
     async def delete(self, db_obj: Tasks) -> Tasks:
@@ -2152,7 +2223,7 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get_tasks_pageination_response(
         self,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskInCRUDResponse]:
+    ) -> PageinationInfo[Tasks]:
         query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
         query_stmt = query_stmt.options(
             *self._get_chat_loader_options(self.default_limit_count)
@@ -2164,7 +2235,6 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskInCRUDResponse,
         )
 
     # ------- 内部调用
@@ -2188,29 +2258,25 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
 
         tasks_id = result.scalars().unique().all()
 
-        # TODO: 测试
-        # await self.session.execute(
-        #     sa.update(self.model)
-        #     .where(self.model.id.in_(tasks_id))
-        #     .values(state=TaskState.ENQUEUED)
-        # )
+        await self.session.execute(
+            sa.update(self.model)
+            .where(self.model.id.in_(tasks_id))
+            .values(state=TaskState.ENQUEUED)
+        )
 
         return tasks_id
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_audit.py`
+## `/home/askfiy/Code/axon/core/repository/crud/tasks_audit.py`
 
 ```python
 import sqlalchemy as sa
 
 from core.models.db import TasksAudit
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskAuditInCRUDResponse,
-)
 
 
 class TasksAuditRepository(BaseCRUDRepository[TasksAudit]):
@@ -2218,7 +2284,7 @@ class TasksAuditRepository(BaseCRUDRepository[TasksAudit]):
         self,
         task_id: int,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskAuditInCRUDResponse]:
+    ) -> PageinationInfo[TasksAudit]:
         query_stmt = sa.select(self.model).where(
             self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
@@ -2226,23 +2292,19 @@ class TasksAuditRepository(BaseCRUDRepository[TasksAudit]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskAuditInCRUDResponse,
         )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_chat.py`
+## `/home/askfiy/Code/axon/core/repository/crud/tasks_chat.py`
 
 ```python
 import sqlalchemy as sa
 
 from core.models.db import TasksChat
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskChatInCRUDResponse,
-)
 
 
 class TasksChatRepository(BaseCRUDRepository[TasksChat]):
@@ -2250,7 +2312,7 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
         self,
         task_id: int,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskChatInCRUDResponse]:
+    ) -> PageinationInfo[TasksChat]:
         query_stmt = sa.select(self.model).where(
             self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
@@ -2258,23 +2320,19 @@ class TasksChatRepository(BaseCRUDRepository[TasksChat]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskChatInCRUDResponse,
         )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_history.py`
+## `/home/askfiy/Code/axon/core/repository/crud/tasks_history.py`
 
 ```python
 import sqlalchemy as sa
 
 from core.models.db import TasksHistory
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo
 from core.repository.crud.base import BaseCRUDRepository
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskHistoryInCRUDResponse,
-)
 
 
 class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
@@ -2282,7 +2340,7 @@ class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
         self,
         task_id: int,
         pageination: PageinationRequest,
-    ) -> PageinationResponse[TaskHistoryInCRUDResponse]:
+    ) -> PageinationInfo[TasksHistory]:
         query_stmt = sa.select(self.model).where(
             self.model.task_id == task_id, sa.not_(self.model.is_deleted)
         )
@@ -2290,12 +2348,11 @@ class TasksHistoryRepository(BaseCRUDRepository[TasksHistory]):
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
-            response_model_cls=TaskHistoryInCRUDResponse,
         )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/repository/crud/tasks_metadata.py`
+## `/home/askfiy/Code/axon/core/repository/crud/tasks_metadata.py`
 
 ```python
 from core.models.db import TasksMetadata
@@ -2307,11 +2364,9 @@ class TasksMetadataRepository(BaseCRUDRepository[TasksMetadata]):
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/scheduler/__init__.py`
+## `/home/askfiy/Code/axon/core/scheduler/__init__.py`
 
 ```python
-import asyncio
-
 from .dispatch import Dispatch
 
 
@@ -2327,16 +2382,13 @@ __all__ = ["open_scheduler", "stop_scheduler"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/scheduler/dispatch.py`
+## `/home/askfiy/Code/axon/core/scheduler/dispatch.py`
 
 ```python
 import asyncio
-from typing import Any
 
 from core.globals import broker
-from core.services.tasks import get_dispatch_tasks_id, get_dispatch_task_by_id
-
-from .task import Task
+from core.services.tasks import get_task_by_id, get_dispatch_tasks_id
 
 
 class Dispatch:
@@ -2355,7 +2407,7 @@ class Dispatch:
     @classmethod
     async def consumption(cls, message: dict[str, int]):
         task_id = message["task_id"]
-        task = await get_dispatch_task_by_id(task_id)
+        task = await get_task_by_id(task_id)
         print(
             f"消费啦: {task.id} {task.name} {task.histories} {task.chats} {task.metadata_info.keywords}"
         )
@@ -2371,25 +2423,23 @@ class Dispatch:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/services/__init__.py`
+## `/home/askfiy/Code/axon/core/services/__init__.py`
 
 ```python
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/services/tasks.py`
+## `/home/askfiy/Code/axon/core/services/tasks.py`
 
 ```python
 from collections.abc import Sequence
 
-import fastapi
-from fastapi import HTTPException
-
 from core.models.db import Tasks
 from core.models.http import (
     PageinationRequest,
-    PageinationResponse,
-    TaskInCRUDResponse,
+)
+from core.models.services import (
+    PageinationInfo,
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
 )
@@ -2397,336 +2447,273 @@ from core.repository.crud import (
     TasksCRUDRepository,
     TasksMetadataRepository,
 )
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
+from core.database.connection import (
     get_async_session_direct,
     get_async_tx_session_direct,
 )
+from core.exceptions import ServiceNotFoundException, ServiceMissMessageException
 
 
-async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
-    tasks_repo = TasksCRUDRepository(session=session)
-    task = await tasks_repo.get(pk=task_id)
+async def get_task_by_id(task_id: int) -> Tasks:
+    async with get_async_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        task = await tasks_repo.get(pk=task_id, joined_loads=[Tasks.metadata_info])
 
-    if not task:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
-        )
-    return TaskInCRUDResponse.model_validate(task)
-
-
-async def get_tasks(
-    session: AsyncSession, pageination: PageinationRequest
-) -> PageinationResponse[TaskInCRUDResponse]:
-    tasks_repo = TasksCRUDRepository(session=session)
-    return await tasks_repo.get_tasks_pageination_response(pageination=pageination)
-
-
-async def delete_task_by_id(session: AsyncTxSession, task_id: int) -> bool:
-    tasks_repo = TasksCRUDRepository(session=session)
-    # 我们会在 repo 层涉及到是否删除 metadata_info, 所以先将其 JOIN LOAD 出来
-    task = await tasks_repo.get(
-        pk=task_id, joined_loads=[Tasks.metadata_info, Tasks.parent]
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
-        )
-
-    task = await tasks_repo.delete(db_obj=task)
-    return bool(task.is_deleted)
-
-
-async def create_task(
-    session: AsyncTxSession, request_model: TaskCreateRequestModel
-) -> TaskInCRUDResponse:
-    task_info = request_model.model_dump(exclude={"metadata"})
-
-    tasks_repo = TasksCRUDRepository(
-        session=session,
-    )
-
-    if request_model.parent_id:
-        parent_task = await tasks_repo.get(pk=request_model.parent_id)
-
-        if not parent_task:
-            raise HTTPException(
-                status_code=fastapi.status.HTTP_404_NOT_FOUND,
-                detail=f"父任务: {request_model.parent_id} 不存在",
+        if not task:
+            raise ServiceNotFoundException(
+                f"任务: {task_id} 不存在",
             )
-        task_info["metadata_id"] = parent_task.metadata_id
-        task_info["deep_level"] = parent_task.deep_level + 1
-
-    elif request_model.metadata:
-        tasks_metadata_repo = TasksMetadataRepository(
-            session=session,
-        )
-        task_metadata = await tasks_metadata_repo.create(
-            request_model.metadata.model_dump()
-        )
-        task_info["metadata_id"] = task_metadata.id
-    else:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_400_BAD_REQUEST,
-            detail="创建任务时，必须提供 parent_id 或 metadata",
-        )
-
-    task = await tasks_repo.create(create_info=task_info)
-
-    return TaskInCRUDResponse.model_validate(task)
+    return task
 
 
-async def update_task(
-    session: AsyncTxSession, task_id: int, request_model: TaskUpdateRequestModel
-) -> TaskInCRUDResponse:
-    tasks_repo = TasksCRUDRepository(
-        session=session,
-    )
-    task = await tasks_repo.get(pk=task_id)
+async def get_tasks(pageination: PageinationRequest) -> PageinationInfo[Tasks]:
+    async with get_async_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        return await tasks_repo.get_tasks_pageination_response(pageination=pageination)
 
-    if not task:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
+
+async def delete_task_by_id(task_id: int) -> bool:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        # 我们会在 repo 层涉及到是否删除 metadata_info, 所以先将其 JOIN LOAD 出来
+        task = await tasks_repo.get(
+            pk=task_id, joined_loads=[Tasks.metadata_info, Tasks.parent]
         )
 
-    if request_model.metadata:
-        tasks_metadata_repo = TasksMetadataRepository(
+        if not task:
+            raise ServiceNotFoundException(
+                f"任务: {task_id} 不存在",
+            )
+
+        task = await tasks_repo.delete(db_obj=task)
+        return bool(task.is_deleted)
+
+
+async def create_task(request_model: TaskCreateRequestModel) -> Tasks:
+    async with get_async_tx_session_direct() as session:
+        task_info = request_model.model_dump(exclude={"metadata"})
+
+        tasks_repo = TasksCRUDRepository(
             session=session,
         )
 
-        task_metadata = await tasks_metadata_repo.get(
-            pk=task.metadata_id,
-        )
+        if request_model.parent_id:
+            parent_task = await tasks_repo.get(pk=request_model.parent_id)
 
-        if not task_metadata:
-            raise HTTPException(
-                status_code=fastapi.status.HTTP_404_NOT_FOUND,
-                detail=f"任务: {task_id} 元信息不存在",
+            if not parent_task:
+                raise ServiceNotFoundException(
+                    f"父任务: {request_model.parent_id} 不存在"
+                )
+
+            task_info["metadata_id"] = parent_task.metadata_id
+            task_info["deep_level"] = parent_task.deep_level + 1
+
+        elif request_model.metadata:
+            tasks_metadata_repo = TasksMetadataRepository(
+                session=session,
+            )
+            task_metadata = await tasks_metadata_repo.create(
+                request_model.metadata.model_dump()
+            )
+            task_info["metadata_id"] = task_metadata.id
+        else:
+            raise ServiceMissMessageException(
+                "创建任务时，必须提供 parent_id 或 metadata"
             )
 
-        await tasks_metadata_repo.update(
-            task_metadata,
-            update_info=request_model.metadata.model_dump(),
+        return await tasks_repo.create(create_info=task_info)
+
+
+async def update_task(task_id: int, request_model: TaskUpdateRequestModel) -> Tasks:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(
+            session=session,
+        )
+        task = await tasks_repo.get(pk=task_id)
+
+        if not task:
+            raise ServiceNotFoundException(f"任务: {task_id} 不存在")
+
+        if request_model.metadata:
+            tasks_metadata_repo = TasksMetadataRepository(
+                session=session,
+            )
+
+            task_metadata = await tasks_metadata_repo.get(
+                pk=task.metadata_id,
+            )
+
+            if not task_metadata:
+                raise ServiceMissMessageException(
+                    f"任务: {task_id} 元信息不存在",
+                )
+
+            await tasks_metadata_repo.update(
+                task_metadata,
+                update_info=request_model.metadata.model_dump(),
+            )
+
+        # 自动更新, metadata 也会保存. 这里我们排除掉未设置的字段，就能进行部分更新了.
+        return await tasks_repo.update(
+            task,
+            update_info=request_model.model_dump(
+                exclude_unset=True, exclude={"metadata"}
+            ),
         )
 
-    # 自动更新, metadata 也会保存. 这里我们排除掉未设置的字段，就能进行部分更新了.
-    task = await tasks_repo.update(
-        task,
-        update_info=request_model.model_dump(exclude_unset=True, exclude={"metadata"}),
-    )
-    return TaskInCRUDResponse.model_validate(task)
 
-
-# --- 内部调用
 async def get_dispatch_tasks_id() -> Sequence[int]:
     async with get_async_tx_session_direct() as session:
         tasks_repo = TasksCRUDRepository(session=session)
         return await tasks_repo.get_dispatch_tasks_id()
 
-
-async def get_dispatch_task_by_id(id: int) -> Tasks:
-    async with get_async_session_direct() as session:
-        tasks_repo = TasksCRUDRepository(session=session)
-        task = await tasks_repo.get(id, joined_loads=[Tasks.metadata_info])
-        if not task:
-            raise Exception(f"Task: {id} 被意外删除.")
-
-        return task
-
 ```
 
-## `/Users/askfiy/project/coding/axon/core/services/tasks_audit.py`
+## `/home/askfiy/Code/axon/core/services/tasks_audit.py`
 
 ```python
-import fastapi
-from fastapi import HTTPException
-
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskAuditInCRUDResponse,
-    TaskAuditCreateRequestModel,
-)
-from core.repository.crud import (
-    TasksCRUDRepository,
-    TasksAuditRepository,
-)
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
+from core.models.db import TasksAudit
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo, TaskAuditCreateRequestModel
+from core.repository.crud import TasksCRUDRepository, TasksAuditRepository
+from core.exceptions import ServiceNotFoundException
+from core.database.connection import (
+    get_async_session_direct,
+    get_async_tx_session_direct,
 )
 
 
 async def get_audits(
-    task_id: int, session: AsyncSession, pageination: PageinationRequest
-) -> PageinationResponse[TaskAuditInCRUDResponse]:
-    tasks_audit_repo = TasksAuditRepository(session=session)
+    task_id: int, pageination: PageinationRequest
+) -> PageinationInfo[TasksAudit]:
+    async with get_async_session_direct() as session:
+        tasks_audit_repo = TasksAuditRepository(session=session)
 
-    return await tasks_audit_repo.get_audits_pageination_response(
-        task_id=task_id,
-        pageination=pageination,
-    )
-
-
-async def insert_task_audit(
-    session: AsyncTxSession, task_id: int, request_model: TaskAuditCreateRequestModel
-) -> TaskAuditInCRUDResponse:
-    tasks_repo = TasksCRUDRepository(
-        session=session,
-    )
-    task_exists = await tasks_repo.exists(pk=task_id)
-
-    if not task_exists:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
+        return await tasks_audit_repo.get_audits_pageination_response(
+            task_id=task_id,
+            pageination=pageination,
         )
 
-    tasks_audit_repo = TasksAuditRepository(session=session)
 
-    task_audit = await tasks_audit_repo.create(
-        create_info={"task_id": task_id, **request_model.model_dump()}
-    )
+async def create_audit(
+    task_id: int, request_model: TaskAuditCreateRequestModel
+) -> TasksAudit:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(
+            session=session,
+        )
+        task_exists = await tasks_repo.exists(pk=task_id)
 
-    return TaskAuditInCRUDResponse.model_validate(task_audit)
+        if not task_exists:
+            raise ServiceNotFoundException(f"任务: {task_id} 不存在")
+
+        tasks_audit_repo = TasksAuditRepository(session=session)
+
+        return await tasks_audit_repo.create(
+            create_info={"task_id": task_id, **request_model.model_dump()}
+        )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/services/tasks_chat.py`
+## `/home/askfiy/Code/axon/core/services/tasks_chat.py`
 
 ```python
-import fastapi
-from fastapi import HTTPException
-
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskInCRUDResponse,
-    TaskChatInCRUDResponse,
-    TaskChatCreateRequestModel,
-)
-
-from core.repository.crud import (
-    TasksCRUDRepository,
-    TasksChatRepository,
-)
-
-from core.api.dependencies import (
-    AsyncSession,
-    AsyncTxSession,
+from core.models.db import TasksChat
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo, TaskChatCreateRequestModel
+from core.repository.crud import TasksCRUDRepository, TasksChatRepository
+from core.exceptions import ServiceNotFoundException
+from core.database.connection import (
+    get_async_session_direct,
+    get_async_tx_session_direct,
 )
 
 
 async def get_chats(
-    task_id: int, session: AsyncSession, pageination: PageinationRequest
-) -> PageinationResponse[TaskChatInCRUDResponse]:
-    tasks_chat_repo = TasksChatRepository(session=session)
+    task_id: int, pageination: PageinationRequest
+) -> PageinationInfo[TasksChat]:
+    async with get_async_session_direct() as session:
+        tasks_chat_repo = TasksChatRepository(session=session)
 
-    return await tasks_chat_repo.get_chats_pageination_response(
-        task_id=task_id,
-        pageination=pageination,
-    )
-
-
-async def insert_task_chat(
-    session: AsyncTxSession, task_id: int, request_model: TaskChatCreateRequestModel
-) -> TaskInCRUDResponse:
-    tasks_repo = TasksCRUDRepository(
-        session=session,
-    )
-    task_exists = await tasks_repo.exists(pk=task_id)
-
-    if not task_exists:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
+        return await tasks_chat_repo.get_chats_pageination_response(
+            task_id=task_id,
+            pageination=pageination,
         )
 
-    tasks_chat_repo = TasksChatRepository(session=session)
 
-    await tasks_chat_repo.create(
-        create_info={"task_id": task_id, **request_model.model_dump()}
-    )
+async def create_chat(
+    task_id: int, request_model: TaskChatCreateRequestModel
+) -> TasksChat:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(
+            session=session,
+        )
+        task_exists = await tasks_repo.exists(pk=task_id)
 
-    task = await tasks_repo.get(
-        pk=task_id,
-    )
-    return TaskInCRUDResponse.model_validate(task)
+        if not task_exists:
+            raise ServiceNotFoundException(f"任务: {task_id} 不存在")
+
+        tasks_chat_repo = TasksChatRepository(session=session)
+
+        return await tasks_chat_repo.create(
+            create_info={"task_id": task_id, **request_model.model_dump()}
+        )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/services/tasks_history.py`
+## `/home/askfiy/Code/axon/core/services/tasks_history.py`
 
 ```python
-import fastapi
-from fastapi import HTTPException
-
-from core.models.http import (
-    PageinationRequest,
-    PageinationResponse,
-    TaskInCRUDResponse,
-    TaskHistoryInCRUDResponse,
-    TaskHistoryCreateRequestModel,
+from core.models.db import TasksHistory
+from core.models.http import PageinationRequest
+from core.models.services import PageinationInfo, TaskHistoryCreateRequestModel
+from core.repository.crud import TasksCRUDRepository, TasksHistoryRepository
+from core.exceptions import ServiceNotFoundException
+from core.database.connection import (
+    get_async_session_direct,
+    get_async_tx_session_direct,
 )
-
-from core.repository.crud import (
-    TasksCRUDRepository,
-    TasksHistoryRepository,
-)
-
-from core.api.dependencies import AsyncSession, AsyncTxSession
 
 
 async def get_histories(
-    task_id: int, session: AsyncSession, pageination: PageinationRequest
-) -> PageinationResponse[TaskHistoryInCRUDResponse]:
-    tasks_history_repo = TasksHistoryRepository(session=session)
+    task_id: int, pageination: PageinationRequest
+) -> PageinationInfo[TasksHistory]:
+    async with get_async_session_direct() as session:
+        tasks_history_repo = TasksHistoryRepository(session=session)
 
-    return await tasks_history_repo.get_histories_pageination_response(
-        task_id=task_id,
-        pageination=pageination,
-    )
-
-
-async def insert_task_history(
-    session: AsyncTxSession, task_id: int, request_model: TaskHistoryCreateRequestModel
-) -> TaskInCRUDResponse:
-    tasks_repo = TasksCRUDRepository(
-        session=session,
-    )
-    task_exists = await tasks_repo.exists(pk=task_id)
-
-    if not task_exists:
-        raise HTTPException(
-            status_code=fastapi.status.HTTP_404_NOT_FOUND,
-            detail=f"任务: {task_id} 不存在",
+        return await tasks_history_repo.get_histories_pageination_response(
+            task_id=task_id,
+            pageination=pageination,
         )
 
-    tasks_history_repo = TasksHistoryRepository(session=session)
 
-    await tasks_history_repo.create(
-        create_info={"task_id": task_id, **request_model.model_dump()}
-    )
+async def create_history(
+    task_id: int, request_model: TaskHistoryCreateRequestModel
+) -> TasksHistory:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(
+            session=session,
+        )
+        task_exists = await tasks_repo.exists(pk=task_id)
 
-    task = await tasks_repo.get(
-        pk=task_id,
-    )
-    return TaskInCRUDResponse.model_validate(task)
+        if not task_exists:
+            raise ServiceNotFoundException(f"任务: {task_id} 不存在")
+
+        tasks_history_repo = TasksHistoryRepository(session=session)
+
+        return await tasks_history_repo.create(
+            create_info={"task_id": task_id, **request_model.model_dump()}
+        )
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/__init__.py`
+## `/home/askfiy/Code/axon/core/utils/__init__.py`
 
 ```python
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/datetime.py`
+## `/home/askfiy/Code/axon/core/utils/datetime.py`
 
 ```python
 from datetime import datetime, timezone
@@ -2744,7 +2731,7 @@ def sql_datetime_format(dt: datetime | None = None) -> str:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/decorators.py`
+## `/home/askfiy/Code/axon/core/utils/decorators.py`
 
 ```python
 import logging
@@ -2790,7 +2777,7 @@ def profiled(
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/enums.py`
+## `/home/askfiy/Code/axon/core/utils/enums.py`
 
 ```python
 from enum import StrEnum
@@ -2801,7 +2788,7 @@ def enum_values(enum_class: type[StrEnum]) -> list[str]:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/logger.py`
+## `/home/askfiy/Code/axon/core/utils/logger.py`
 
 ```python
 import sys
@@ -2878,7 +2865,7 @@ def setup_logging(level: int | str = logging.INFO) -> None:
 
 ```
 
-## `/Users/askfiy/project/coding/axon/main.py`
+## `/home/askfiy/Code/axon/main.py`
 
 ```python
 import uuid
@@ -2892,12 +2879,17 @@ from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
 
 from core.context import g
+from core.api.routes import api_router
+from core.utils.logger import setup_logging
+from core.api.dependencies import global_headers
+from core.scheduler import open_scheduler, stop_scheduler
 from core.models.http import ResponseModel
 from core.middleware import GlobalContextMiddleware, GlobalMonitorMiddleware
-from core.api.routes import api_router
-from core.api.dependencies import global_headers
-from core.utils.logger import setup_logging
-from core.scheduler import open_scheduler, stop_scheduler
+from core.exceptions import (
+    ServiceException,
+    ServiceNotFoundException,
+    ServiceMissMessageException,
+)
 
 logger = logging.getLogger("Axon")
 
@@ -2929,6 +2921,17 @@ async def trace(
     response = await call_next(request)
     response.headers["X-Trace-Id"] = g.trace_id
     return response
+
+
+@app.exception_handler(ServiceException)
+async def service_exception_handler(request: Request, exc: ServiceException):
+    status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
+    if isinstance(exc, ServiceNotFoundException):
+        status_code = fastapi.status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, ServiceMissMessageException):
+        status_code = fastapi.status.HTTP_400_BAD_REQUEST
+
+    raise fastapi.HTTPException(status_code=status_code, detail=str(exc))
 
 
 @app.exception_handler(Exception)

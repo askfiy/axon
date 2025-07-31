@@ -1,10 +1,7 @@
-import datetime
-
 from ..model import BaseModel
 from ..enums import MessageRole
 
 
-class TaskChatInCRUDResponse(BaseModel):
+class TaskChatCreateRequestModel(BaseModel):
     message: str
     role: MessageRole
-    created_at: datetime.datetime
