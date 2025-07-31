@@ -26,6 +26,7 @@ class TaskInCRUDResponse(BaseHttpModel):
     chats: list[TaskChatInCRUDResponse]
     histories: list[TaskHistoryInCRUDResponse]
 
+    # DEP: 已废弃. 使用 db 查询时就完全做好排序. 不需要下面的二次操作
     # raw_chats: list[TaskChatInCRUDResponse] = Field(default_factory=list, exclude=True, alias="chats")
     #
     # @computed_field

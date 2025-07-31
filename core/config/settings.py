@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, MySQLDsn, RedisDsn, field_validator
 
 
+# TODO: 开发阶段. 写死使用 .local.env
 configure_path = os.path.join(".", ".env", ".local.env")
 
 

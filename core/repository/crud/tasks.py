@@ -18,11 +18,12 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     def __init__(self, session: AsyncSession):
         super().__init__(session=session)
 
+        self.default_limit_count = 10
         self.default_joined_loads = [Tasks.chats, Tasks.histories]
         self.tasks_metadata_repo = TasksMetadataRepository(session=self.session)
 
     def _get_history_loader_options(
-        self, limit_count: int = 10
+        self, limit_count: int
     ) -> list[_AbstractLoad | LoaderCriteriaOption]:
         history_alias_for_ranking = aliased(TasksHistory)
         ranked_histories_cte = (
@@ -52,7 +53,7 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         ]
 
     def _get_chat_loader_options(
-        self, limit_count: int = 10
+        self, limit_count: int
     ) -> list[_AbstractLoad | LoaderCriteriaOption]:
         chat_alias_for_ranking = aliased(TasksChat)
         ranked_chats_cte = (
@@ -101,9 +102,13 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         if joined_loads:
             for join_field in joined_loads:
                 if Tasks.chats is join_field:
-                    stmt = stmt.options(*self._get_chat_loader_options())
+                    stmt = stmt.options(
+                        *self._get_chat_loader_options(self.default_limit_count)
+                    )
                 elif Tasks.histories is join_field:
-                    stmt = stmt.options(*self._get_history_loader_options())
+                    stmt = stmt.options(
+                        *self._get_history_loader_options(self.default_limit_count)
+                    )
                 else:
                     stmt = stmt.options(joinedload(join_field))
 
@@ -178,8 +183,12 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         pageination: PageinationRequest,
     ) -> PageinationResponse[TaskInCRUDResponse]:
         query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
-        query_stmt = query_stmt.options(*self._get_chat_loader_options())
-        query_stmt = query_stmt.options(*self._get_history_loader_options())
+        query_stmt = query_stmt.options(
+            *self._get_chat_loader_options(self.default_limit_count)
+        )
+        query_stmt = query_stmt.options(
+            *self._get_history_loader_options(self.default_limit_count)
+        )
 
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,

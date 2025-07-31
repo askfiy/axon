@@ -10,26 +10,26 @@ from redis.typing import FieldT, EncodableT
 from redis.exceptions import ResponseError
 from pydantic import BaseModel, Field
 
-RbokerMessage: TypeAlias = Any
+RbrokerMessage: TypeAlias = Any
 
 
-class RbokerPayloadMetadata(BaseModel):
+class RbrokerPayloadMetadata(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RbokerPayloadExcInfo(BaseModel):
+class RbrokerPayloadExcInfo(BaseModel):
     message: str
     type: str
     failed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RbokerPayload(BaseModel):
+class RbrokerPayload(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
-    content: RbokerMessage
-    exc_info: RbokerPayloadExcInfo | None = Field(default=None)
+    content: RbrokerMessage
+    exc_info: RbrokerPayloadExcInfo | None = Field(default=None)
 
 
-class RBoker:
+class RBroker:
     """
     基于 Redis Streams 实现的发布订阅系统
     """
@@ -44,20 +44,20 @@ class RBoker:
         topic: str,
         group_id: str,
         message_id: str,
-        rboker_message: RbokerPayload,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        rbroker_message: RbrokerPayload,
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
     ):
         try:
-            await callback(rboker_message.content)
+            await callback(rbroker_message.content)
         except Exception as exc:
-            rboker_message.exc_info = RbokerPayloadExcInfo(
+            rbroker_message.exc_info = RbrokerPayloadExcInfo(
                 message=str(exc), type=exc.__class__.__name__
             )
-            print(rboker_message.model_dump_json())
+            print(rbroker_message.model_dump_json())
             # 放入死信队列. 后续可通过消费该死信队列获得新的讯息
             await self._client.xadd(
                 f"{topic}-dlq",
-                {"message": rboker_message.model_dump_json()},
+                {"message": rbroker_message.model_dump_json()},
                 maxlen=1000,
             )
             logging.error(
@@ -72,7 +72,7 @@ class RBoker:
         topic: str,
         group_id: str,
         consumer_name: str,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
     ):
         while True:
             try:
@@ -88,14 +88,16 @@ class RBoker:
                 message_id, data = messages[0]
 
                 try:
-                    rboker_message = RbokerPayload.model_validate_json(data["message"])
+                    rbroker_message = RbrokerPayload.model_validate_json(
+                        data["message"]
+                    )
 
                     asyncio.create_task(
                         self._callback_ack(
                             topic=topic,
                             group_id=group_id,
                             message_id=message_id,
-                            rboker_message=rboker_message,
+                            rbroker_message=rbroker_message,
                             callback=callback,
                         )
                     )
@@ -116,11 +118,11 @@ class RBoker:
                 )
                 await asyncio.sleep(5)
 
-    async def send(self, topic: str, message: RbokerMessage) -> str:
-        rboker_message = RbokerPayload(content=message)
+    async def send(self, topic: str, message: RbrokerMessage) -> str:
+        rbroker_message = RbrokerPayload(content=message)
 
         message_payload: dict[FieldT, EncodableT] = {
-            "message": rboker_message.model_dump_json()
+            "message": rbroker_message.model_dump_json()
         }
         message_id = await self._client.xadd(topic, message_payload)
         logging.info(f"Sent message {message_id} to topic '{topic}'")
@@ -130,7 +132,7 @@ class RBoker:
         self,
         topic: str,
         group_id: str,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
         count: int = 1,
         *args: Any,
         **kwargs: Any,
@@ -176,12 +178,12 @@ if __name__ == "__main__":
         topic = "Test Topic"
         group = "Test Group"
 
-        async def handle_message(message: RbokerMessage):
+        async def handle_message(message: RbrokerMessage):
             print(message)
             raise RuntimeError("Exc")
 
-        boker = RBoker(redis_client=redis_client)
-        await boker.consumer(
+        broker = RBroker(redis_client=redis_client)
+        await broker.consumer(
             topic=topic, group_id=group, callback=handle_message, count=5
         )
 
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         import uuid
 
         while True:
-            await boker.send(topic=topic, message=f"Hi {count}: {uuid.uuid4()}")
+            await broker.send(topic=topic, message=f"Hi {count}: {uuid.uuid4()}")
             count += 1
             await asyncio.sleep(0.5)
 
