@@ -1,11 +1,10 @@
-from datetime import datetime
 import sys
 import logging
 from typing import override
 
 from colorlog import ColoredFormatter
 
-from core.utils.context import g
+from core.context import g
 
 
 class Formatter(ColoredFormatter):

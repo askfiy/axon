@@ -8,6 +8,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.strategy_options import _AbstractLoad  # pyright: ignore[reportPrivateUsage]
 from sqlalchemy.orm.util import LoaderCriteriaOption
 
+from core.models.enums import TaskState
 from core.models.db import Tasks, TasksChat, TasksHistory
 from core.models.http import PageinationRequest, PageinationResponse, TaskInCRUDResponse
 from core.repository.crud.base import BaseCRUDRepository
@@ -93,14 +94,15 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get(
         self, pk: int, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Tasks | None:
-        joined_loads = joined_loads or self.default_joined_loads
+        extend_joined_loads = self.default_joined_loads.copy()
+        extend_joined_loads.extend(joined_loads or [])
 
         stmt = sa.select(self.model).where(
             self.model.id == pk, sa.not_(self.model.is_deleted)
         )
 
-        if joined_loads:
-            for join_field in joined_loads:
+        if extend_joined_loads:
+            for join_field in extend_joined_loads:
                 if Tasks.chats is join_field:
                     stmt = stmt.options(
                         *self._get_chat_loader_options(self.default_limit_count)
@@ -120,9 +122,10 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get_all(
         self, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Sequence[Tasks]:
-        return await super().get_all(
-            joined_loads=joined_loads or self.default_joined_loads
-        )
+        extend_joined_loads = self.default_joined_loads.copy()
+        extend_joined_loads.extend(joined_loads or [])
+
+        return await super().get_all(joined_loads=extend_joined_loads)
 
     @override
     async def delete(self, db_obj: Tasks) -> Tasks:
@@ -195,3 +198,32 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
             stmt=query_stmt,
             response_model_cls=TaskInCRUDResponse,
         )
+
+    # ------- 内部调用
+    async def get_dispatch_tasks_id(self) -> Sequence[int]:
+        stmt = (
+            sa.select(self.model.id)
+            .where(
+                sa.not_(self.model.is_deleted),
+                self.model.state.in_([TaskState.INITIAL, TaskState.SCHEDULED]),
+                self.model.expect_execute_time < sa.func.now(),
+            )
+            .order_by(
+                self.model.expect_execute_time.asc(),
+                self.model.priority.desc(),
+                self.model.created_at.asc(),
+            )
+            .with_for_update(skip_locked=True)
+        )
+
+        result = await self.session.execute(stmt)
+
+        tasks_id = result.scalars().unique().all()
+
+        await self.session.execute(
+            sa.update(self.model)
+            .where(self.model.id.in_(tasks_id))
+            .values(state=TaskState.ENQUEUED)
+        )
+
+        return tasks_id

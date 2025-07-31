@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import fastapi
 from fastapi import HTTPException
 
@@ -9,12 +11,16 @@ from core.models.http import (
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
 )
-
 from core.repository.crud import (
     TasksCRUDRepository,
     TasksMetadataRepository,
 )
-from core.api.dependencies import AsyncSession, AsyncTxSession
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session_direct,
+    get_async_tx_session_direct,
+)
 
 
 async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
@@ -132,3 +138,20 @@ async def update_task(
         update_info=request_model.model_dump(exclude_unset=True, exclude={"metadata"}),
     )
     return TaskInCRUDResponse.model_validate(task)
+
+
+# --- 内部调用
+async def get_dispatch_tasks_id() -> Sequence[int]:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        return await tasks_repo.get_dispatch_tasks_id()
+
+
+async def get_dispatch_task_by_id(id: int) -> Tasks:
+    async with get_async_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        task = await tasks_repo.get(id, joined_loads=[Tasks.metadata_info])
+        if not task:
+            raise Exception(f"Task: {id} 被意外删除.")
+
+        return task

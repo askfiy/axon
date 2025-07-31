@@ -8,12 +8,13 @@ import fastapi
 from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
 
+from core.context import g
 from core.models.http import ResponseModel
 from core.middleware import GlobalContextMiddleware, GlobalMonitorMiddleware
 from core.api.routes import api_router
 from core.api.dependencies import global_headers
 from core.utils.logger import setup_logging
-from core.utils.context import g
+from core.scheduler import open_scheduler, stop_scheduler
 
 logger = logging.getLogger("Axon")
 
@@ -21,7 +22,12 @@ logger = logging.getLogger("Axon")
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
     setup_logging()
+
+    # 开始任务调度
+    await open_scheduler()
     yield
+    # 结束任务调度
+    await stop_scheduler()
 
 
 app = fastapi.FastAPI(

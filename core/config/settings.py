@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     SYNC_DB_URL: str = Field(examples=["mysql+pymysql://root:123@127.0.0.1:3306/db1"])
     ASYNC_DB_URL: str = Field(examples=["mysql+asyncmy://root:123@127.0.0.1:3306/db1"])
     OPENAI_API_KEY: str = Field(examples=["sk-proj-..."])
-    ASYNC_REDIS_URL: str = Field(examples=[""])
+    ASYNC_REDIS_URL: str = Field(examples=["redis://127.0.0.1:6379"])
 
     @field_validator("SYNC_DB_URL", "ASYNC_DB_URL", mode="before")
     @classmethod

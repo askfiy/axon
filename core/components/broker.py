@@ -4,7 +4,6 @@ from typing import Any, TypeAlias
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timezone
 
-import asyncio_atexit
 import redis.asyncio as redis
 from redis.typing import FieldT, EncodableT
 from redis.exceptions import ResponseError
@@ -36,10 +35,10 @@ class RBroker:
 
     def __init__(self, redis_client: redis.Redis):
         self._client = redis_client
-        self._stop = False
         self._consumer_tasks: list[asyncio.Task[None]] = []
+        self._dlq_maxlen = 1000
 
-    async def _callback_ack(
+    async def _handle_callback_ack(
         self,
         topic: str,
         group_id: str,
@@ -53,12 +52,11 @@ class RBroker:
             rbroker_message.exc_info = RbrokerPayloadExcInfo(
                 message=str(exc), type=exc.__class__.__name__
             )
-            print(rbroker_message.model_dump_json())
             # 放入死信队列. 后续可通过消费该死信队列获得新的讯息
             await self._client.xadd(
                 f"{topic}-dlq",
                 {"message": rbroker_message.model_dump_json()},
-                maxlen=1000,
+                maxlen=self._dlq_maxlen,
             )
             logging.error(
                 f"Error in background task for message {message_id}: {exc}",
@@ -93,7 +91,7 @@ class RBroker:
                     )
 
                     asyncio.create_task(
-                        self._callback_ack(
+                        self._handle_callback_ack(
                             topic=topic,
                             group_id=group_id,
                             message_id=message_id,
@@ -131,8 +129,8 @@ class RBroker:
     async def consumer(
         self,
         topic: str,
-        group_id: str,
         callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
+        group_id: str | None = None,
         count: int = 1,
         *args: Any,
         **kwargs: Any,
@@ -140,6 +138,8 @@ class RBroker:
         """
         创建并启动消费者后台任务。
         """
+        group_id = group_id or topic + "_group"
+
         try:
             await self._client.xgroup_create(topic, group_id, mkstream=True)
             logging.info(f"Consumer group '{group_id}' created for topic '{topic}'.")
@@ -155,10 +155,6 @@ class RBroker:
             self._consumer_tasks.append(task)
             logging.info(f"Started consumer task '{consumer_name}' on topic '{topic}'.")
 
-        if not self._stop:
-            asyncio_atexit.register(self.shutdown)  # pyright: ignore[reportUnknownMemberType]
-            self._stop = True
-
     async def shutdown(self):
         logging.info("Shutting down consumer tasks...")
 
@@ -167,32 +163,3 @@ class RBroker:
 
         await asyncio.gather(*self._consumer_tasks, return_exceptions=True)
         logging.info("All consumer tasks have been shut down.")
-
-        self._client.close()
-
-
-if __name__ == "__main__":
-    redis_client = redis.from_url("redis://127.0.0.1:6379", decode_responses=True)  # pyright: ignore[reportUnknownMemberType]
-
-    async def tester():
-        topic = "Test Topic"
-        group = "Test Group"
-
-        async def handle_message(message: RbrokerMessage):
-            print(message)
-            raise RuntimeError("Exc")
-
-        broker = RBroker(redis_client=redis_client)
-        await broker.consumer(
-            topic=topic, group_id=group, callback=handle_message, count=5
-        )
-
-        count = 1
-        import uuid
-
-        while True:
-            await broker.send(topic=topic, message=f"Hi {count}: {uuid.uuid4()}")
-            count += 1
-            await asyncio.sleep(0.5)
-
-    asyncio.run(tester())

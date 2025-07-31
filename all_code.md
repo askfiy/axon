@@ -1,12 +1,13 @@
 ## `/Users/askfiy/project/coding/axon/core/api/dependencies.py`
 
 ```python
-from contextlib import asynccontextmanager
 from fastapi import Header
 
 from core.database.connection import (
     get_async_session,
     get_async_tx_session,
+    get_async_session_direct,
+    get_async_tx_session_direct,
     AsyncSession,
     AsyncTxSession,
 )
@@ -25,6 +26,8 @@ async def global_headers(
 __all__ = [
     "get_async_session",
     "get_async_tx_session",
+    "get_async_session_direct",
+    "get_async_tx_session_direct",
     "AsyncSession",
     "AsyncTxSession",
     "global_headers",
@@ -350,10 +353,14 @@ async def insert_task_history(
 ## `/Users/askfiy/project/coding/axon/core/components/__init__.py`
 
 ```python
+from .cache import RCache
+from .broker import RBroker
+
+__all__ = ["RCache", "RBroker"]
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/components/boker.py`
+## `/Users/askfiy/project/coding/axon/core/components/broker.py`
 
 ```python
 import logging
@@ -362,61 +369,59 @@ from typing import Any, TypeAlias
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timezone
 
-import asyncio_atexit
 import redis.asyncio as redis
 from redis.typing import FieldT, EncodableT
 from redis.exceptions import ResponseError
 from pydantic import BaseModel, Field
 
-RbokerMessage: TypeAlias = Any
+RbrokerMessage: TypeAlias = Any
 
 
-class RbokerPayloadMetadata(BaseModel):
+class RbrokerPayloadMetadata(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RbokerPayloadExcInfo(BaseModel):
+class RbrokerPayloadExcInfo(BaseModel):
     message: str
     type: str
     failed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RbokerPayload(BaseModel):
+class RbrokerPayload(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
-    content: RbokerMessage
-    exc_info: RbokerPayloadExcInfo | None = Field(default=None)
+    content: RbrokerMessage
+    exc_info: RbrokerPayloadExcInfo | None = Field(default=None)
 
 
-class RBoker:
+class RBroker:
     """
     基于 Redis Streams 实现的发布订阅系统
     """
 
     def __init__(self, redis_client: redis.Redis):
         self._client = redis_client
-        self._stop = False
         self._consumer_tasks: list[asyncio.Task[None]] = []
+        self._dlq_maxlen = 1000
 
-    async def _callback_ack(
+    async def _handle_callback_ack(
         self,
         topic: str,
         group_id: str,
         message_id: str,
-        rboker_message: RbokerPayload,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        rbroker_message: RbrokerPayload,
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
     ):
         try:
-            await callback(rboker_message.content)
+            await callback(rbroker_message.content)
         except Exception as exc:
-            rboker_message.exc_info = RbokerPayloadExcInfo(
+            rbroker_message.exc_info = RbrokerPayloadExcInfo(
                 message=str(exc), type=exc.__class__.__name__
             )
-            print(rboker_message.model_dump_json())
             # 放入死信队列. 后续可通过消费该死信队列获得新的讯息
             await self._client.xadd(
                 f"{topic}-dlq",
-                {"message": rboker_message.model_dump_json()},
-                maxlen=1000,
+                {"message": rbroker_message.model_dump_json()},
+                maxlen=self._dlq_maxlen,
             )
             logging.error(
                 f"Error in background task for message {message_id}: {exc}",
@@ -430,7 +435,7 @@ class RBoker:
         topic: str,
         group_id: str,
         consumer_name: str,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
     ):
         while True:
             try:
@@ -446,14 +451,16 @@ class RBoker:
                 message_id, data = messages[0]
 
                 try:
-                    rboker_message = RbokerPayload.model_validate_json(data["message"])
+                    rbroker_message = RbrokerPayload.model_validate_json(
+                        data["message"]
+                    )
 
                     asyncio.create_task(
-                        self._callback_ack(
+                        self._handle_callback_ack(
                             topic=topic,
                             group_id=group_id,
                             message_id=message_id,
-                            rboker_message=rboker_message,
+                            rbroker_message=rbroker_message,
                             callback=callback,
                         )
                     )
@@ -474,11 +481,11 @@ class RBoker:
                 )
                 await asyncio.sleep(5)
 
-    async def send(self, topic: str, message: RbokerMessage) -> str:
-        rboker_message = RbokerPayload(content=message)
+    async def send(self, topic: str, message: RbrokerMessage) -> str:
+        rbroker_message = RbrokerPayload(content=message)
 
         message_payload: dict[FieldT, EncodableT] = {
-            "message": rboker_message.model_dump_json()
+            "message": rbroker_message.model_dump_json()
         }
         message_id = await self._client.xadd(topic, message_payload)
         logging.info(f"Sent message {message_id} to topic '{topic}'")
@@ -487,8 +494,8 @@ class RBoker:
     async def consumer(
         self,
         topic: str,
-        group_id: str,
-        callback: Callable[[RbokerMessage], Coroutine[Any, Any, None]],
+        callback: Callable[[RbrokerMessage], Coroutine[Any, Any, None]],
+        group_id: str | None = None,
         count: int = 1,
         *args: Any,
         **kwargs: Any,
@@ -496,6 +503,8 @@ class RBoker:
         """
         创建并启动消费者后台任务。
         """
+        group_id = group_id or topic + "_group"
+
         try:
             await self._client.xgroup_create(topic, group_id, mkstream=True)
             logging.info(f"Consumer group '{group_id}' created for topic '{topic}'.")
@@ -511,10 +520,6 @@ class RBoker:
             self._consumer_tasks.append(task)
             logging.info(f"Started consumer task '{consumer_name}' on topic '{topic}'.")
 
-        if not self._stop:
-            asyncio_atexit.register(self.shutdown)  # pyright: ignore[reportUnknownMemberType]
-            self._stop = True
-
     async def shutdown(self):
         logging.info("Shutting down consumer tasks...")
 
@@ -524,35 +529,6 @@ class RBoker:
         await asyncio.gather(*self._consumer_tasks, return_exceptions=True)
         logging.info("All consumer tasks have been shut down.")
 
-        self._client.close()
-
-
-if __name__ == "__main__":
-    redis_client = redis.from_url("redis://127.0.0.1:6379", decode_responses=True)  # pyright: ignore[reportUnknownMemberType]
-
-    async def tester():
-        topic = "Test Topic"
-        group = "Test Group"
-
-        async def handle_message(message: RbokerMessage):
-            print(message)
-            raise RuntimeError("Exc")
-
-        boker = RBoker(redis_client=redis_client)
-        await boker.consumer(
-            topic=topic, group_id=group, callback=handle_message, count=5
-        )
-
-        count = 1
-        import uuid
-
-        while True:
-            await boker.send(topic=topic, message=f"Hi {count}: {uuid.uuid4()}")
-            count += 1
-            await asyncio.sleep(0.5)
-
-    asyncio.run(tester())
-
 ```
 
 ## `/Users/askfiy/project/coding/axon/core/components/cache.py`
@@ -561,18 +537,16 @@ if __name__ == "__main__":
 import json
 from typing import Any
 
-import asyncio_atexit
 import redis.asyncio as redis
 
 
 class RCache:
     """
-    基于 Redis 实现的缓存系统
+    基于 Redis 实现的 Simple 缓存系统
     """
 
     def __init__(self, redis_client: redis.Redis):
         self._client = redis_client
-        asyncio_atexit.register(self._client.close)  # pyright: ignore[reportUnknownMemberType]
 
     async def has(self, key: str) -> bool:
         return await self._client.exists(key) > 0
@@ -633,6 +607,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, MySQLDsn, RedisDsn, field_validator
 
 
+# TODO: 开发阶段. 写死使用 .local.env
 configure_path = os.path.join(".", ".env", ".local.env")
 
 
@@ -642,7 +617,7 @@ class Settings(BaseSettings):
     SYNC_DB_URL: str = Field(examples=["mysql+pymysql://root:123@127.0.0.1:3306/db1"])
     ASYNC_DB_URL: str = Field(examples=["mysql+asyncmy://root:123@127.0.0.1:3306/db1"])
     OPENAI_API_KEY: str = Field(examples=["sk-proj-..."])
-    ASYNC_REDIS_URL: str = Field(examples=[""])
+    ASYNC_REDIS_URL: str = Field(examples=["redis://127.0.0.1:6379"])
 
     @field_validator("SYNC_DB_URL", "ASYNC_DB_URL", mode="before")
     @classmethod
@@ -672,6 +647,15 @@ class Settings(BaseSettings):
 
 ```
 
+## `/Users/askfiy/project/coding/axon/core/context/__init__.py`
+
+```python
+from core.middleware.context import g
+
+__all__ = ["g"]
+
+```
+
 ## `/Users/askfiy/project/coding/axon/core/database/__init__.py`
 
 ```python
@@ -682,11 +666,25 @@ class Settings(BaseSettings):
 
 ```python
 from typing import TypeAlias
+from contextlib import asynccontextmanager
 
+import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from core.config import env_helper
 
+# ----- redis
+
+pool: redis.ConnectionPool = redis.ConnectionPool.from_url(  # pyright: ignore[reportUnknownMemberType]
+    url=env_helper.ASYNC_REDIS_URL, decode_responses=True
+)
+
+
+def get_redis_client() -> redis.Redis:
+    return redis.Redis(connection_pool=pool)
+
+
+# ----- sqlalchemy
 
 engine = create_async_engine(
     env_helper.ASYNC_DB_URL,
@@ -694,6 +692,7 @@ engine = create_async_engine(
 )
 
 AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
     autocommit=False,
     autoflush=False,
     expire_on_commit=False,
@@ -716,15 +715,37 @@ async def get_async_tx_session():
             raise exc
 
 
+get_async_session_direct = asynccontextmanager(get_async_session)
+get_async_tx_session_direct = asynccontextmanager(get_async_tx_session)
+
+
 AsyncTxSession: TypeAlias = AsyncSession
 
 __all__ = [
     "engine",
     "get_async_session",
     "get_async_tx_session",
+    "get_async_session_direct",
+    "get_async_tx_session_direct",
     "AsyncTxSession",
     "AsyncSession",
+    "get_redis_client",
 ]
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/globals/__init__.py`
+
+```python
+from core.database.connection import get_redis_client
+from core.components import RBroker, RCache
+
+_redis_client = get_redis_client()
+
+broker = RBroker(redis_client=_redis_client)
+cache = RCache(redis_client=_redis_client)
+
+__all__ = ["broker", "cache"]
 
 ```
 
@@ -1552,7 +1573,7 @@ class PageinationResponse(BaseHttpResponseModel[T]):
 ```python
 import datetime
 
-from pydantic import Field, field_validator, field_serializer, computed_field
+from pydantic import field_validator
 
 
 from core.models.enums import TaskState
@@ -1578,6 +1599,7 @@ class TaskInCRUDResponse(BaseHttpModel):
     chats: list[TaskChatInCRUDResponse]
     histories: list[TaskHistoryInCRUDResponse]
 
+    # DEP: 已废弃. 使用 db 查询时就完全做好排序. 不需要下面的二次操作
     # raw_chats: list[TaskChatInCRUDResponse] = Field(default_factory=list, exclude=True, alias="chats")
     #
     # @computed_field
@@ -1734,6 +1756,26 @@ class TaskMetaDataRequestModel(BaseHttpModel):
 
 
 class TaskMetaDataResponseModel:
+    pass
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/models/scheduler/__init__.py`
+
+```python
+from .tasks import int
+
+__all__ = ["int"]
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/models/scheduler/tasks.py`
+
+```python
+from core.models.http.tasks import TaskInCRUDResponse
+
+
+class int(TaskInCRUDResponse):
     pass
 
 ```
@@ -1935,6 +1977,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.orm.strategy_options import _AbstractLoad  # pyright: ignore[reportPrivateUsage]
 from sqlalchemy.orm.util import LoaderCriteriaOption
 
+from core.models.enums import TaskState
 from core.models.db import Tasks, TasksChat, TasksHistory
 from core.models.http import PageinationRequest, PageinationResponse, TaskInCRUDResponse
 from core.repository.crud.base import BaseCRUDRepository
@@ -1945,11 +1988,12 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     def __init__(self, session: AsyncSession):
         super().__init__(session=session)
 
+        self.default_limit_count = 10
         self.default_joined_loads = [Tasks.chats, Tasks.histories]
         self.tasks_metadata_repo = TasksMetadataRepository(session=self.session)
 
     def _get_history_loader_options(
-        self, limit_count: int = 10
+        self, limit_count: int
     ) -> list[_AbstractLoad | LoaderCriteriaOption]:
         history_alias_for_ranking = aliased(TasksHistory)
         ranked_histories_cte = (
@@ -1979,7 +2023,7 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         ]
 
     def _get_chat_loader_options(
-        self, limit_count: int = 10
+        self, limit_count: int
     ) -> list[_AbstractLoad | LoaderCriteriaOption]:
         chat_alias_for_ranking = aliased(TasksChat)
         ranked_chats_cte = (
@@ -2019,7 +2063,8 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
     async def get(
         self, pk: int, joined_loads: list[InstrumentedAttribute[Any]] | None = None
     ) -> Tasks | None:
-        joined_loads = joined_loads or self.default_joined_loads
+        self.default_joined_loads.extend(joined_loads or [])
+        joined_loads = self.default_joined_loads
 
         stmt = sa.select(self.model).where(
             self.model.id == pk, sa.not_(self.model.is_deleted)
@@ -2028,9 +2073,13 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         if joined_loads:
             for join_field in joined_loads:
                 if Tasks.chats is join_field:
-                    stmt = stmt.options(*self._get_chat_loader_options())
+                    stmt = stmt.options(
+                        *self._get_chat_loader_options(self.default_limit_count)
+                    )
                 elif Tasks.histories is join_field:
-                    stmt = stmt.options(*self._get_history_loader_options())
+                    stmt = stmt.options(
+                        *self._get_history_loader_options(self.default_limit_count)
+                    )
                 else:
                     stmt = stmt.options(joinedload(join_field))
 
@@ -2105,14 +2154,48 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
         pageination: PageinationRequest,
     ) -> PageinationResponse[TaskInCRUDResponse]:
         query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
-        query_stmt = query_stmt.options(*self._get_chat_loader_options())
-        query_stmt = query_stmt.options(*self._get_history_loader_options())
+        query_stmt = query_stmt.options(
+            *self._get_chat_loader_options(self.default_limit_count)
+        )
+        query_stmt = query_stmt.options(
+            *self._get_history_loader_options(self.default_limit_count)
+        )
 
         return await super().get_pageination_response_by_stmt(
             pageination_request=pageination,
             stmt=query_stmt,
             response_model_cls=TaskInCRUDResponse,
         )
+
+    # ------- 内部调用
+    async def get_dispatch_tasks_id(self) -> Sequence[int]:
+        stmt = (
+            sa.select(self.model.id)
+            .where(
+                sa.not_(self.model.is_deleted),
+                self.model.state.in_([TaskState.INITIAL, TaskState.SCHEDULED]),
+                self.model.expect_execute_time < sa.func.now(),
+            )
+            .order_by(
+                self.model.expect_execute_time.asc(),
+                self.model.priority.desc(),
+                self.model.created_at.asc(),
+            )
+            .with_for_update(skip_locked=True)
+        )
+
+        result = await self.session.execute(stmt)
+
+        tasks_id = result.scalars().unique().all()
+
+        # TODO: 测试
+        # await self.session.execute(
+        #     sa.update(self.model)
+        #     .where(self.model.id.in_(tasks_id))
+        #     .values(state=TaskState.ENQUEUED)
+        # )
+
+        return tasks_id
 
 ```
 
@@ -2227,6 +2310,64 @@ class TasksMetadataRepository(BaseCRUDRepository[TasksMetadata]):
 ## `/Users/askfiy/project/coding/axon/core/scheduler/__init__.py`
 
 ```python
+import asyncio
+
+from .dispatch import Dispatch
+
+
+async def open_scheduler():
+    await Dispatch.forever()
+
+
+async def stop_scheduler():
+    await Dispatch.shutdown()
+
+
+__all__ = ["open_scheduler", "stop_scheduler"]
+
+```
+
+## `/Users/askfiy/project/coding/axon/core/scheduler/dispatch.py`
+
+```python
+import asyncio
+from typing import Any
+
+from core.globals import broker
+from core.services.tasks import get_dispatch_tasks_id, get_dispatch_task_by_id
+
+from .task import Task
+
+
+class Dispatch:
+    TOPIC = "Task-Scheduler"
+
+    @classmethod
+    async def production(cls):
+        while True:
+            tasks_id = await get_dispatch_tasks_id()
+
+            for task_id in tasks_id:
+                await broker.send(topic=cls.TOPIC, message={"task_id": task_id})
+
+            await asyncio.sleep(60)
+
+    @classmethod
+    async def consumption(cls, message: dict[str, int]):
+        task_id = message["task_id"]
+        task = await get_dispatch_task_by_id(task_id)
+        print(
+            f"消费啦: {task.id} {task.name} {task.histories} {task.chats} {task.metadata_info.keywords}"
+        )
+
+    @classmethod
+    async def forever(cls):
+        asyncio.create_task(cls.production())
+        await broker.consumer(topic=cls.TOPIC, callback=cls.consumption, count=5)
+
+    @classmethod
+    async def shutdown(cls):
+        await broker.shutdown()
 
 ```
 
@@ -2239,6 +2380,8 @@ class TasksMetadataRepository(BaseCRUDRepository[TasksMetadata]):
 ## `/Users/askfiy/project/coding/axon/core/services/tasks.py`
 
 ```python
+from collections.abc import Sequence
+
 import fastapi
 from fastapi import HTTPException
 
@@ -2250,12 +2393,16 @@ from core.models.http import (
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
 )
-
 from core.repository.crud import (
     TasksCRUDRepository,
     TasksMetadataRepository,
 )
-from core.api.dependencies import AsyncSession, AsyncTxSession
+from core.api.dependencies import (
+    AsyncSession,
+    AsyncTxSession,
+    get_async_session_direct,
+    get_async_tx_session_direct,
+)
 
 
 async def get_task_by_id(session: AsyncSession, task_id: int) -> TaskInCRUDResponse:
@@ -2373,6 +2520,23 @@ async def update_task(
         update_info=request_model.model_dump(exclude_unset=True, exclude={"metadata"}),
     )
     return TaskInCRUDResponse.model_validate(task)
+
+
+# --- 内部调用
+async def get_dispatch_tasks_id() -> Sequence[int]:
+    async with get_async_tx_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        return await tasks_repo.get_dispatch_tasks_id()
+
+
+async def get_dispatch_task_by_id(id: int) -> Tasks:
+    async with get_async_session_direct() as session:
+        tasks_repo = TasksCRUDRepository(session=session)
+        task = await tasks_repo.get(id, joined_loads=[Tasks.metadata_info])
+        if not task:
+            raise Exception(f"Task: {id} 被意外删除.")
+
+        return task
 
 ```
 
@@ -2562,15 +2726,6 @@ async def insert_task_history(
 
 ```
 
-## `/Users/askfiy/project/coding/axon/core/utils/context.py`
-
-```python
-from core.middleware.context import g
-
-__all__ = ["g"]
-
-```
-
 ## `/Users/askfiy/project/coding/axon/core/utils/datetime.py`
 
 ```python
@@ -2599,44 +2754,10 @@ from collections.abc import Awaitable, Callable
 
 from pyinstrument import Profiler
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 P = ParamSpec("P")
 R = TypeVar("R")
 
 logger = logging.getLogger()
-
-
-def transactional(
-    func: Callable[P, Awaitable[R]],
-) -> Callable[P, Awaitable[R]]:
-    """
-    安全的自动提交回滚事务。
-    """
-
-    @functools.wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        session: AsyncSession | None = kwargs.get("session")
-        if not isinstance(session, AsyncSession):
-            for arg in args:
-                if isinstance(arg, AsyncSession):
-                    session = arg
-                    break
-
-        if not session:
-            raise TypeError(
-                "Decorated function must have an 'AsyncSession' instance as an argument."
-            )
-
-        try:
-            result = await func(*args, **kwargs)
-            await session.commit()
-            return result
-        except Exception as exc:
-            await session.rollback()
-            raise exc
-
-    return wrapper
 
 
 def profiled(
@@ -2683,14 +2804,13 @@ def enum_values(enum_class: type[StrEnum]) -> list[str]:
 ## `/Users/askfiy/project/coding/axon/core/utils/logger.py`
 
 ```python
-from datetime import datetime
 import sys
 import logging
 from typing import override
 
 from colorlog import ColoredFormatter
 
-from core.utils.context import g
+from core.context import g
 
 
 class Formatter(ColoredFormatter):
@@ -2771,12 +2891,13 @@ import fastapi
 from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
 
+from core.context import g
 from core.models.http import ResponseModel
 from core.middleware import GlobalContextMiddleware, GlobalMonitorMiddleware
 from core.api.routes import api_router
 from core.api.dependencies import global_headers
 from core.utils.logger import setup_logging
-from core.utils.context import g
+from core.scheduler import open_scheduler, stop_scheduler
 
 logger = logging.getLogger("Axon")
 
@@ -2784,7 +2905,12 @@ logger = logging.getLogger("Axon")
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
     setup_logging()
+
+    # 开始任务调度
+    await open_scheduler()
     yield
+    # 结束任务调度
+    await stop_scheduler()
 
 
 app = fastapi.FastAPI(

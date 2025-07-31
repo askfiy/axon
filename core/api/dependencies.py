@@ -1,9 +1,10 @@
-from contextlib import asynccontextmanager
 from fastapi import Header
 
 from core.database.connection import (
     get_async_session,
     get_async_tx_session,
+    get_async_session_direct,
+    get_async_tx_session_direct,
     AsyncSession,
     AsyncTxSession,
 )
@@ -22,6 +23,8 @@ async def global_headers(
 __all__ = [
     "get_async_session",
     "get_async_tx_session",
+    "get_async_session_direct",
+    "get_async_tx_session_direct",
     "AsyncSession",
     "AsyncTxSession",
     "global_headers",

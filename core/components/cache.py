@@ -1,18 +1,16 @@
 import json
 from typing import Any
 
-import asyncio_atexit
 import redis.asyncio as redis
 
 
 class RCache:
     """
-    基于 Redis 实现的缓存系统
+    基于 Redis 实现的 Simple 缓存系统
     """
 
     def __init__(self, redis_client: redis.Redis):
         self._client = redis_client
-        asyncio_atexit.register(self._client.close)  # pyright: ignore[reportUnknownMemberType]
 
     async def has(self, key: str) -> bool:
         return await self._client.exists(key) > 0
