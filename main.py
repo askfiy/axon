@@ -1,30 +1,51 @@
+import uuid
+import logging
 from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 
 import uvicorn
 import fastapi
-from fastapi import Request
+from fastapi import Request, Response, Depends
 from fastapi.responses import JSONResponse
 
-from core.api.routes import api_router
 from core.models.http import ResponseModel
+from core.middeleware import GlobalContextMiddleware, GlobalMonitorMiddleware
+from core.api.routes import api_router
+from core.api.dependencies import global_headers
+from core.utils.logger import setup_logging
+from core.utils.context import g
+
+logger = logging.getLogger("Axon")
 
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
+    setup_logging()
     yield
 
 
-app = fastapi.FastAPI(title="Axon", lifespan=lifespan)
+app = fastapi.FastAPI(
+    title="Axon", lifespan=lifespan, dependencies=[Depends(global_headers)]
+)
+
+app.add_middleware(GlobalContextMiddleware)
+app.add_middleware(GlobalMonitorMiddleware)
+
+
+@app.middleware("http")
+async def trace(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    g.trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
+    response = await call_next(request)
+    response.headers["X-Trace-Id"] = g.trace_id
+    return response
 
 
 @app.exception_handler(Exception)
 async def exception_handler(request: Request, exc: Exception):
     status_code = fastapi.status.HTTP_500_INTERNAL_SERVER_ERROR
     message = str(exc)
-
-    if isinstance(exc, fastapi.HTTPException):
-        status_code = exc.status_code
-        message = exc.detail
 
     return JSONResponse(
         status_code=status_code,

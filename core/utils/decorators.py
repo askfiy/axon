@@ -1,12 +1,16 @@
+import logging
 import functools
-from typing import Callable, TypeVar, ParamSpec
-from collections.abc import Awaitable
+from typing import TypeVar, ParamSpec
+from collections.abc import Awaitable, Callable
+
 from pyinstrument import Profiler
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+logger = logging.getLogger()
 
 
 def transactional(
@@ -59,11 +63,11 @@ def profiled(
         profiler.stop()
 
         report_text = profiler.output_text(unicode=True, color=True)
-        print("\n" + "=" * 80)
-        print(f"📊 PyInstrument Profile Report for Endpoint: '{func.__name__}'")
-        print("=" * 80)
-        print(report_text)
-        print("=" * 80 + "\n")
+        logger.info("\n" + "=" * 80)
+        logger.info(f"📊 PyInstrument Profile Report for Endpoint: '{func.__name__}'")
+        logger.info("=" * 80)
+        logger.info(report_text)
+        logger.info("=" * 80 + "\n")
 
         return response
 
