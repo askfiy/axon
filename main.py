@@ -21,7 +21,7 @@ from core.exceptions import (
     ServiceMissMessageException,
 )
 
-logger = logging.getLogger("Axon")
+logger = logging.getLogger("Taxonsk")
 
 
 @asynccontextmanager
@@ -36,7 +36,7 @@ async def lifespan(app: fastapi.FastAPI):
 
 
 app = fastapi.FastAPI(
-    title="Axon", lifespan=lifespan, dependencies=[Depends(global_headers)]
+    title="Taxonsk", lifespan=lifespan, dependencies=[Depends(global_headers)]
 )
 
 app.add_middleware(GlobalContextMiddleware)

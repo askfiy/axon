@@ -38,6 +38,4 @@ class TaskAuditSource(StrEnum):
     USER = "user"
     ADMIN = "admin"
     AGENT = "agent"
-    WORKER = "worker"
-    SCHEDULER = "scheduler"
-    MONITOR = "monitor"
+    SYSTEM = "system"

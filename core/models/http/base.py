@@ -11,7 +11,7 @@ from ..model import BaseModel, T
 
 class BaseHttpResponseModel(BaseModel, Generic[T]):
     """
-    为 Axon API 设计的、标准化的泛型响应模型。
+    为 Taxonsk API 设计的、标准化的泛型响应模型。
     """
 
     code: int = Field(default=200, description="状态码")
