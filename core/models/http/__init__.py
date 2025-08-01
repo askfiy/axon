@@ -1,7 +1,7 @@
 from .base import (
     ResponseModel,
-    PageinationRequest,
-    PageinationResponse,
+    PaginationRequest,
+    PaginationResponse,
 )
 from .tasks import TaskInCRUDResponse
 from .tasks_chat import TaskChatInCRUDResponse
@@ -10,8 +10,8 @@ from .tasks_history import TaskHistoryInCRUDResponse
 
 __all__ = [
     "ResponseModel",
-    "PageinationRequest",
-    "PageinationResponse",
+    "PaginationRequest",
+    "PaginationResponse",
     "TaskInCRUDResponse",
     "TaskChatInCRUDResponse",
     "TaskAuditInCRUDResponse",

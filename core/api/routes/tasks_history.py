@@ -3,8 +3,8 @@ from fastapi import Depends
 
 from core.models.http import (
     ResponseModel,
-    PageinationRequest,
-    PageinationResponse,
+    PaginationRequest,
+    PaginationResponse,
     TaskHistoryInCRUDResponse,
 )
 from core.models.services import TaskHistoryCreateRequestModel
@@ -20,16 +20,16 @@ tasks_history_route = fastapi.APIRouter(
     path="",
     name="获取执行记录",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=PageinationResponse[TaskHistoryInCRUDResponse],
+    response_model=PaginationResponse[TaskHistoryInCRUDResponse],
 )
 async def get(
     task_id: int = fastapi.Path(description="任务 ID"),
-    pageination: PageinationRequest = Depends(PageinationRequest),
-) -> PageinationResponse[TaskHistoryInCRUDResponse]:
+    pagination: PaginationRequest = Depends(PaginationRequest),
+) -> PaginationResponse[TaskHistoryInCRUDResponse]:
     result = await tasks_history_services.get_histories(
-        task_id=task_id, pageination=pageination
+        task_id=task_id, pagination=pagination
     )
-    return PageinationResponse(
+    return PaginationResponse(
         **result.model_dump(
             exclude={"db_objects"},
         ),

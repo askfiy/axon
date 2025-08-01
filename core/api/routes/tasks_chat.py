@@ -3,8 +3,8 @@ from fastapi import Depends
 
 from core.models.http import (
     ResponseModel,
-    PageinationRequest,
-    PageinationResponse,
+    PaginationRequest,
+    PaginationResponse,
     TaskChatInCRUDResponse,
 )
 from core.models.services import TaskChatCreateRequestModel
@@ -18,16 +18,16 @@ tasks_chat_route = fastapi.APIRouter(prefix="/{task_id}/chat", tags=["Tasks-chat
     path="",
     name="获取聊天记录",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=PageinationResponse[TaskChatInCRUDResponse],
+    response_model=PaginationResponse[TaskChatInCRUDResponse],
 )
 async def get(
     task_id: int = fastapi.Path(description="任务 ID"),
-    pageination: PageinationRequest = Depends(PageinationRequest),
-) -> PageinationResponse[TaskChatInCRUDResponse]:
+    pagination: PaginationRequest = Depends(PaginationRequest),
+) -> PaginationResponse[TaskChatInCRUDResponse]:
     result = await tasks_chat_services.get_chats(
-        task_id=task_id, pageination=pageination
+        task_id=task_id, pagination=pagination
     )
-    return PageinationResponse(
+    return PaginationResponse(
         **result.model_dump(
             exclude={"db_objects"},
         ),

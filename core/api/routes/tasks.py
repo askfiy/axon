@@ -4,8 +4,8 @@ from fastapi import Depends
 from core.services import tasks as tasks_services
 from core.models.http import (
     ResponseModel,
-    PageinationRequest,
-    PageinationResponse,
+    PaginationRequest,
+    PaginationResponse,
     TaskInCRUDResponse,
 )
 from core.models.services import TaskCreateRequestModel, TaskUpdateRequestModel
@@ -30,13 +30,13 @@ async def create(
     path="",
     name="获取全部任务",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=PageinationResponse[TaskInCRUDResponse],
+    response_model=PaginationResponse[TaskInCRUDResponse],
 )
 async def get(
-    pageination: PageinationRequest = Depends(PageinationRequest),
-) -> PageinationResponse[TaskInCRUDResponse]:
-    result = await tasks_services.get_tasks(pageination=pageination)
-    return PageinationResponse(
+    pagination: PaginationRequest = Depends(PaginationRequest),
+) -> PaginationResponse[TaskInCRUDResponse]:
+    result = await tasks_services.get_tasks(pagination=pagination)
+    return PaginationResponse(
         **result.model_dump(
             exclude={"db_objects"},
         ),

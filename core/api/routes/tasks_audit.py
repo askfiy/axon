@@ -3,8 +3,8 @@ from fastapi import Depends
 
 from core.models.http import (
     ResponseModel,
-    PageinationRequest,
-    PageinationResponse,
+    PaginationRequest,
+    PaginationResponse,
     TaskAuditInCRUDResponse,
 )
 from core.models.services import TaskAuditCreateRequestModel
@@ -18,16 +18,16 @@ tasks_audit_route = fastapi.APIRouter(prefix="/{task_id}/audit", tags=["Tasks-au
     path="",
     name="获取审查记录",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=PageinationResponse[TaskAuditInCRUDResponse],
+    response_model=PaginationResponse[TaskAuditInCRUDResponse],
 )
 async def get(
     task_id: int = fastapi.Path(description="任务 ID"),
-    pageination: PageinationRequest = Depends(PageinationRequest),
-) -> PageinationResponse[TaskAuditInCRUDResponse]:
+    pagination: PaginationRequest = Depends(PaginationRequest),
+) -> PaginationResponse[TaskAuditInCRUDResponse]:
     result = await tasks_audit_services.get_audits(
-        task_id=task_id, pageination=pageination
+        task_id=task_id, pagination=pagination
     )
-    return PageinationResponse(
+    return PaginationResponse(
         **result.model_dump(
             exclude={"db_objects"},
         ),

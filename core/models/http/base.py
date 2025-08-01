@@ -23,7 +23,7 @@ class ResponseModel(BaseHttpResponseModel[T]):
     result: T | None = Field(default=None, description="响应体负载")
 
 
-class PageinationRequest(BaseModel):
+class PaginationRequest(BaseModel):
     """
     分页器请求对象
     """
@@ -61,7 +61,7 @@ class PageinationRequest(BaseModel):
         return _struct_order_by
 
 
-class PageinationResponse(BaseHttpResponseModel[T]):
+class PaginationResponse(BaseHttpResponseModel[T]):
     """
     分页器响应对象
     """

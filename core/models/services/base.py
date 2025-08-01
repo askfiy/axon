@@ -6,7 +6,7 @@ from pydantic import Field
 from ..model import BaseModel, T
 
 
-class PageinationInfo(BaseModel, Generic[T]):
+class Paginator(BaseModel, Generic[T]):
     """
     分页响应信息
     """
