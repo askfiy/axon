@@ -8,8 +8,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.db import BaseTableModel
-from core.models.http import PaginationRequest
-from core.models.services import Paginator
+from core.models.http import Paginator
 
 ModelType = TypeVar("ModelType", bound=BaseTableModel)
 
@@ -90,13 +89,13 @@ class BaseCRUDRepository(Generic[ModelType]):
         self.session.add(db_obj)
         return db_obj
 
-    async def get_pagination_response(
+    async def upget_pagination(
         self,
-        pagination_request: PaginationRequest,
+        paginator: Paginator,
         joined_loads: list[InstrumentedAttribute[Any]] | None = None,
-    ) -> Paginator[ModelType]:
+    ) -> Paginator:
         """
-        返回默认的分页对象
+        更新返回默认的分页器.
         """
         stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
 
@@ -104,22 +103,22 @@ class BaseCRUDRepository(Generic[ModelType]):
             for join_field in joined_loads:
                 stmt = stmt.options(joinedload(join_field))
 
-        return await self.get_pagination_response_by_stmt(
-            pagination_request=pagination_request,
+        return await self.upget_pagination_by_stmt(
+            paginator=paginator,
             stmt=stmt,
         )
 
-    async def get_pagination_response_by_stmt(
+    async def upget_pagination_by_stmt(
         self,
-        pagination_request: PaginationRequest,
+        paginator: Paginator,
         stmt: sa.Select[Any],
-    ) -> Paginator[ModelType]:
+    ) -> Paginator:
         """
-        执行 stmt 语句. 并将结果返回为分页对象.
+        执行 stmt 语句. 更新返回分页器.
         """
 
         # 应用排序逻辑
-        for field_name, order_direction in pagination_request.order_by_rule:
+        for field_name, order_direction in paginator.request.order_by_rule:
             if not hasattr(self.model, field_name):
                 raise ValueError(
                     f"{self.model.__name__} is not has field'{field_name}'"
@@ -127,21 +126,20 @@ class BaseCRUDRepository(Generic[ModelType]):
             order_func = sa.asc if order_direction == "asc" else sa.desc
             stmt = stmt.order_by(order_func(getattr(self.model, field_name)))
 
-        page = pagination_request.page
-        page_size = pagination_request.size
-
         # 计算总记录数
         count_stmt = sa.select(sa.func.count()).select_from(stmt.subquery())
         total_items_result = await self.session.execute(count_stmt)
-        total_items = total_items_result.scalar_one()
 
         # 应用分页逻辑
-        paginated_stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        paginated_stmt = stmt.offset(
+            (paginator.request.page - 1) * paginator.request.size
+        ).limit(paginator.request.size)
 
         result = await self.session.execute(paginated_stmt)
-        return Paginator(
-            current_page=page,
-            current_size=page_size,
-            total_counts=total_items,
-            db_objects=result.scalars().unique().all(),
+
+        paginator.with_serializer_response(
+            total_counts=total_items_result.scalar_one(),
+            orm_sequence=result.scalars().unique().all(),
         )
+
+        return paginator

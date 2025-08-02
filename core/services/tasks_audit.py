@@ -1,6 +1,6 @@
 from core.models.db import TasksAudit
-from core.models.http import PaginationRequest
-from core.models.services import Paginator, TaskAuditCreateRequestModel
+from core.models.http import Paginator
+from core.models.services import TaskAuditCreateRequestModel
 from core.repository.crud import TasksCRUDRepository, TasksAuditRepository
 from core.exceptions import ServiceNotFoundException
 from core.database.connection import (
@@ -9,15 +9,13 @@ from core.database.connection import (
 )
 
 
-async def get_audits(
-    task_id: int, pagination: PaginationRequest
-) -> Paginator[TasksAudit]:
+async def upget_tasks_audit_pagination(task_id: int, paginator: Paginator) -> Paginator:
     async with get_async_session_direct() as session:
         tasks_audit_repo = TasksAuditRepository(session=session)
 
-        return await tasks_audit_repo.get_audits_pagination_response(
+        return await tasks_audit_repo.upget_tasks_audit_pagination(
             task_id=task_id,
-            pagination=pagination,
+            paginator=paginator,
         )
 
 

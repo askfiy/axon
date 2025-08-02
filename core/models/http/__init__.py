@@ -1,5 +1,6 @@
 from .base import (
     ResponseModel,
+    Paginator,
     PaginationRequest,
     PaginationResponse,
 )
@@ -10,6 +11,7 @@ from .tasks_history import TaskHistoryInCRUDResponse
 
 __all__ = [
     "ResponseModel",
+    "Paginator",
     "PaginationRequest",
     "PaginationResponse",
     "TaskInCRUDResponse",

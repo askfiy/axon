@@ -3,6 +3,7 @@ from fastapi import Depends
 
 from core.models.http import (
     ResponseModel,
+    Paginator,
     PaginationRequest,
     PaginationResponse,
     TaskHistoryInCRUDResponse,
@@ -20,24 +21,20 @@ tasks_history_route = fastapi.APIRouter(
     path="",
     name="获取执行记录",
     status_code=fastapi.status.HTTP_200_OK,
-    response_model=PaginationResponse[TaskHistoryInCRUDResponse],
+    response_model=PaginationResponse,
 )
 async def get(
     task_id: int = fastapi.Path(description="任务 ID"),
-    pagination: PaginationRequest = Depends(PaginationRequest),
-) -> PaginationResponse[TaskHistoryInCRUDResponse]:
-    result = await tasks_history_services.get_histories(
-        task_id=task_id, pagination=pagination
+    request: PaginationRequest = Depends(PaginationRequest),
+) -> PaginationResponse:
+    paginator = Paginator(
+        request=request,
+        serializer_cls=TaskHistoryInCRUDResponse,
     )
-    return PaginationResponse(
-        **result.model_dump(
-            exclude={"db_objects"},
-        ),
-        result=[
-            TaskHistoryInCRUDResponse.model_validate(history)
-            for history in result.db_objects
-        ],
+    paginator = await tasks_history_services.upget_tasks_history_pagination(
+        task_id=task_id, paginator=paginator
     )
+    return paginator.response
 
 
 @tasks_history_route.post(

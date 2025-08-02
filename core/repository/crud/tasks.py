@@ -10,8 +10,7 @@ from sqlalchemy.orm.util import LoaderCriteriaOption
 
 from core.models.enums import TaskState
 from core.models.db import Tasks, TasksChat, TasksHistory
-from core.models.http import PaginationRequest
-from core.models.services import Paginator
+from core.models.http import Paginator
 from core.repository.crud.base import BaseCRUDRepository
 from core.repository.crud.tasks_metadata import TasksMetadataRepository
 
@@ -182,10 +181,11 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
 
         return task
 
-    async def get_tasks_pagination_response(
+    async def upget_tasks_pagination(
         self,
-        pagination: PaginationRequest,
-    ) -> Paginator[Tasks]:
+        paginator: Paginator,
+        joined_loads: list[InstrumentedAttribute[Any]] | None = None,
+    ) -> Paginator:
         query_stmt = sa.select(self.model).where(sa.not_(self.model.is_deleted))
         query_stmt = query_stmt.options(
             *self._get_chat_loader_options(self.default_limit_count)
@@ -194,8 +194,8 @@ class TasksCRUDRepository(BaseCRUDRepository[Tasks]):
             *self._get_history_loader_options(self.default_limit_count)
         )
 
-        return await super().get_pagination_response_by_stmt(
-            pagination_request=pagination,
+        return await super().upget_pagination_by_stmt(
+            paginator=paginator,
             stmt=query_stmt,
         )
 

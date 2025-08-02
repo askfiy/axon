@@ -1,6 +1,6 @@
 from core.models.db import TasksChat
-from core.models.http import PaginationRequest
-from core.models.services import Paginator, TaskChatCreateRequestModel
+from core.models.http import Paginator
+from core.models.services import TaskChatCreateRequestModel
 from core.repository.crud import TasksCRUDRepository, TasksChatRepository
 from core.exceptions import ServiceNotFoundException
 from core.database.connection import (
@@ -9,15 +9,13 @@ from core.database.connection import (
 )
 
 
-async def get_chats(
-    task_id: int, pagination: PaginationRequest
-) -> Paginator[TasksChat]:
+async def upget_tasks_chat_pagination(task_id: int, paginator: Paginator) -> Paginator:
     async with get_async_session_direct() as session:
         tasks_chat_repo = TasksChatRepository(session=session)
 
-        return await tasks_chat_repo.get_chats_pagination_response(
+        return await tasks_chat_repo.upget_tasks_chat_pagination(
             task_id=task_id,
-            pagination=pagination,
+            paginator=paginator,
         )
 
 

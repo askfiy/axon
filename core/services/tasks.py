@@ -2,10 +2,9 @@ from collections.abc import Sequence
 
 from core.models.db import Tasks
 from core.models.http import (
-    PaginationRequest,
+    Paginator,
 )
 from core.models.services import (
-    Paginator,
     TaskCreateRequestModel,
     TaskUpdateRequestModel,
 )
@@ -32,10 +31,10 @@ async def get_task_by_id(task_id: int) -> Tasks:
     return task
 
 
-async def get_tasks(pagination: PaginationRequest) -> Paginator[Tasks]:
+async def upget_tasks_pagination(paginator: Paginator) -> Paginator:
     async with get_async_session_direct() as session:
         tasks_repo = TasksCRUDRepository(session=session)
-        return await tasks_repo.get_tasks_pagination_response(pagination=pagination)
+        return await tasks_repo.upget_tasks_pagination(paginator=paginator)
 
 
 async def delete_task_by_id(task_id: int) -> bool:

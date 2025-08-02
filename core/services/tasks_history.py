@@ -1,6 +1,6 @@
 from core.models.db import TasksHistory
-from core.models.http import PaginationRequest
-from core.models.services import Paginator, TaskHistoryCreateRequestModel
+from core.models.http import Paginator
+from core.models.services import TaskHistoryCreateRequestModel
 from core.repository.crud import TasksCRUDRepository, TasksHistoryRepository
 from core.exceptions import ServiceNotFoundException
 from core.database.connection import (
@@ -9,15 +9,15 @@ from core.database.connection import (
 )
 
 
-async def get_histories(
-    task_id: int, pagination: PaginationRequest
-) -> Paginator[TasksHistory]:
+async def upget_tasks_history_pagination(
+    task_id: int, paginator: Paginator
+) -> Paginator:
     async with get_async_session_direct() as session:
         tasks_history_repo = TasksHistoryRepository(session=session)
 
-        return await tasks_history_repo.get_histories_pagination_response(
+        return await tasks_history_repo.upget_tasks_history_pagination(
             task_id=task_id,
-            pagination=pagination,
+            paginator=paginator,
         )
 
 
